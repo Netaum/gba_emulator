@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Game Boy Emulator Visualizer</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f1f3f5;
+      color: #111;
+    }
+
+    header {
+      padding: 24px;
+      background: #2b2b2b;
+      color: #fff;
+      text-align: center;
+    }
+
+    .container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      padding: 24px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+      padding: 18px;
+    }
+
+    .card h2 {
+      margin-top: 0;
+      font-size: 1.1rem;
+    }
+
+    .register-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .register {
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      border: 1px solid #e9ecef;
+      font-family: monospace;
+    }
+
+    footer {
+      padding: 16px 24px;
+      font-size: 0.9rem;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Game Boy Emulator Visualization</h1>
+    <p>Object-oriented emulator UI for CPU state and memory summary.</p>
+  </header>
+
+  <div class="container">
+    <section class="card">
+      <h2>CPU Registers</h2>
+      <div class="register-grid" id="registers"></div>
+    </section>
+
+    <section class="card">
+      <h2>System Summary</h2>
+      <p><strong>Program Counter (PC):</strong> <span id="pc">0000</span></p>
+      <p><strong>Stack Pointer (SP):</strong> <span id="sp">0000</span></p>
+      <p><strong>Interrupt Master Enable:</strong> <span id="ime">false</span></p>
+      <p><strong>Current Mode:</strong> <span id="mode">idle</span></p>
+      <button id="resetButton">Reset CPU</button>
+    </section>
+  </div>
+
+  <footer>
+    <p>Use this page as the starting point for Game Boy emulator visualization. Add CPU state updates and memory views as you progress.</p>
+  </footer>
+
+  <script type="module">
+    import { CPU } from './src/cpu.js';
+
+    const cpu = new CPU();
+    const registerContainer = document.getElementById('registers');
+    const pcLabel = document.getElementById('pc');
+    const spLabel = document.getElementById('sp');
+    const imeLabel = document.getElementById('ime');
+    const modeLabel = document.getElementById('mode');
+    const resetButton = document.getElementById('resetButton');
+
+    const registerNames = ['A', 'F', 'B', 'C', 'D', 'E', 'H', 'L'];
+
+    function renderRegisters() {
+      registerContainer.innerHTML = '';
+      registerNames.forEach(name => {
+        const value = cpu.registers[name].toString(16).padStart(2, '0').toUpperCase();
+        const item = document.createElement('div');
+        item.className = 'register';
+        item.textContent = `${name}: 0x${value}`;
+        registerContainer.appendChild(item);
+      });
+
+      pcLabel.textContent = `0x${cpu.pc.toString(16).padStart(4, '0').toUpperCase()}`;
+      spLabel.textContent = `0x${cpu.sp.toString(16).padStart(4, '0').toUpperCase()}`;
+      imeLabel.textContent = cpu.ime ? 'true' : 'false';
+      modeLabel.textContent = cpu.mode;
+    }
+
+    resetButton.addEventListener('click', () => {
+      cpu.reset();
+      renderRegisters();
+    });
+
+    renderRegisters();
+  </script>
+</body>
+</html>
