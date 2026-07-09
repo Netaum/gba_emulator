@@ -22,6 +22,7 @@ export class CPU {
     this.sp = 0xFFFE;
     this.ime = false;
     this.mode = 'idle';
+    this.memory = new Uint8Array(0x10000);
   }
 
   reset() {
@@ -39,6 +40,16 @@ export class CPU {
     this.sp = 0xFFFE;
     this.ime = false;
     this.mode = 'idle';
+    this.memory = new Uint8Array(0x10000);
+
+  }
+
+  readMemory(address, isIO = false) {
+    return this.memory[address & 0xffff];
+  }
+
+  writeMemory(address, value, isIO = false) {
+    this.memory[address & 0xffff] = value & 0xff;
   }
 
   step() {

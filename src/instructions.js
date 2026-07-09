@@ -1,9 +1,50 @@
 const Flags = Object.freeze({
-    Zero: 1 << 0,
-    Substraction: 1 << 1,
-    HalfCarry: 1 << 2,
-    Carry: 1 << 3,
+    Zero: 1 << 7,
+    Substraction: 1 << 6,
+    HalfCarry: 1 << 5,
+    Carry: 1 << 4,
 });
+
+export const condZ  = (cpu) => (cpu.registers.F & Flags.Zero) !== 0;
+export const condNZ = (cpu) => (cpu.registers.F & Flags.Zero) === 0;
+export const condC  = (cpu) => (cpu.registers.F & Flags.Carry) !== 0;
+export const condNC = (cpu) => (cpu.registers.F & Flags.Carry) === 0;
+
+export const readHLAddress = (cpu) => {
+    const address = ((cpu.registers.H << 8) | cpu.registers.L) & 0xffff;
+    return cpu.readMemory(address, false);
+}
+
+/*
+List of abbreviations used in this document.
+
+r8
+Any of the 8-bit registers (A, B, C, D, E, H, L).
+r16
+Any of the general-purpose 16-bit registers (BC, DE, HL).
+n8
+8-bit integer constant.
+n16
+16-bit integer constant.
+e8
+8-bit offset (-128 to 127).
+u3
+3-bit unsigned integer constant (0 to 7).
+cc
+Condition codes:
+Z
+Execute if Z is set.
+NZ
+Execute if Z is not set.
+C
+Execute if C is set.
+NC
+Execute if C is not set.
+! cc
+Negates a condition code.
+vec
+One of the RST vectors (0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, and 0x38).
+*/
 
 const carry = (cpu) => {
     return (cpu.registers.F & Flags.Carry) !== 0 ? 1 : 0;
@@ -122,4 +163,160 @@ function addToHL(cpu, value) {
     cpu.registers.F = cpu.registers.F & Flags.Zero;
     cpu.registers.F |= halfCarry ? Flags.HalfCarry : 0x00;
     cpu.registers.F |= carryOut ? Flags.Carry : 0x00;
+}
+
+export const addValueToSP = (cpu, value) => {
+    
+    const cycles = 4;
+    const e8 = (value << 24) >> 24;
+
+    const halfCarry = ((cpu.sp & 0x0f) + (value & 0x0f)) > 0x0f;
+    const carryOut = ((cpu.sp & 0xff) + (value & 0xff)) > 0xff;
+
+    cpu.sp = (cpu.sp + e8) & 0xffff;
+    cpu.registers.F = 0x00;
+    cpu.registers.F |= halfCarry ? Flags.HalfCarry : 0x00;
+    cpu.registers.F |= carryOut ? Flags.Carry : 0x00;
+
+    return cycles;
+
+}
+
+function andWithAccumulator(cpu, value) {
+    
+    const a = cpu.registers.A & 0xff;
+    const comp = a & value;
+
+    cpu.registers.A = comp & 0xff;
+    cpu.registers.F = 0x00;
+
+    if(comp === 0)
+        cpu.registers.F |= Flags.Zero;
+
+    cpu.registers.F |= Flags.HalfCarry;
+}
+
+export const andRegWithAccumulator = (cpu, register) => {
+
+    const cycles = 1;
+
+    const value = cpu.registers[register] & 0xff;
+    andWithAccumulator(cpu, value);
+
+    return cycles;
+
+}
+
+export const andHLWithAccumulator = (cpu) => {
+
+    const cycles = 2;
+
+    const hl = ((cpu.registers.H << 8) | cpu.registers.L) & 0xffff;
+    const value = cpu.readMemory(hl, false) & 0xff;
+    
+    andWithAccumulator(cpu, value);
+
+    return cycles;
+
+}
+
+export const andValueWithAccumulator = (cpu, value) => {
+    const cycles = 2;
+    andWithAccumulator(cpu, value & 0xff);
+    return cycles;
+}
+
+function testBit(cpu, value, bit) {
+    const bitMask = 1 << bit;
+
+    const comp = value & bitMask;
+
+    cpu.registers.F = cpu.registers.F & Flags.Carry;
+    cpu.registers.F |= (comp === 0) ? Flags.Zero : 0x00;
+    cpu.registers.F |= Flags.HalfCarry;
+}
+
+export const testBitInReg = (cpu, register, bit) => {
+    const cycles = 2;
+    const value = cpu.registers[register] & 0xff;
+    testBit(cpu, value, bit);
+    return cycles;
+}
+
+export const testBitInHL = (cpu, bit) => {
+    const cycles = 3;
+    const hl = ((cpu.registers.H << 8) | cpu.registers.L) & 0xffff;
+    const value = cpu.readMemory(hl, false) & 0xff;
+    testBit(cpu, value, bit);
+    return cycles;
+}
+
+export const callFunction = (cpu, address) => {
+    const cycles = 6;
+
+    const pc = cpu.pc & 0xffff;
+    cpu.sp = (cpu.sp - 1) & 0xffff;
+    cpu.writeMemory(cpu.sp, (pc >> 8) & 0xff, false);
+    cpu.sp = (cpu.sp - 1) & 0xffff;
+    cpu.writeMemory(cpu.sp, pc & 0xff, false);
+    
+    cpu.pc = address & 0xffff;
+
+    return cycles;
+}
+
+export const callFunctionConditional = (cpu, address, condition) => {
+    if(!condition(cpu)) {
+        return 3;
+    } else {
+        return callFunction(cpu, address);
+    }
+}
+
+export const complementCarryFlag = (cpu) => {
+    const cycles = 1;
+    const previous = cpu.registers.F & Flags.Zero;
+    const carryFlag = carry(cpu) === 0 ? Flags.Carry : 0x00;
+    cpu.registers.F = 0x00;
+    cpu.registers.F |= previous;
+    cpu.registers.F |= carryFlag;
+    return cycles;
+}
+
+function compareWithAccumulator(cpu, value) {
+    
+    const sub = (cpu.registers.A & 0xff) - value;
+
+    cpu.registers.F = 0x00;
+    cpu.registers.F |= sub === 0 ? Flags.Zero : 0x00;
+    cpu.registers.F |= Flags.Substraction;
+    cpu.registers.F |= value > cpu.registers.A ? Flags.Carry : 0x00;
+    cpu.registers.F |= (cpu.registers.A & 0x0f) < (value & 0x0f) ? Flags.HalfCarry : 0x00;
+
+}
+
+export const compareRegistryFromAccumulator = (cpu, register) => {
+    const cycles = 1;
+
+    const value = cpu.registers[register] & 0xff;
+    compareWithAccumulator(cpu, value);
+    
+    return cycles;
+}
+
+export const compareHLAddressFromAccumulator = (cpu) => {
+    const cycles = 2;
+
+    const value = readHLAddress(cpu) & 0xff;
+    compareWithAccumulator(cpu, value);
+    
+    return cycles;
+}
+
+export const compareValueFromAccumulator = (cpu, value) => {
+    const cycles = 2;
+    
+    compareWithAccumulator(cpu, value & 0xff);
+
+    return cycles;
 }
