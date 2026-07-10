@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { addRegWithCarryToAccumulator, addRegToAccumulator, addValueWithCarryToAccumulator, addValueToAccumulator, addValueToSP, andRegWithAccumulator, andHLWithAccumulator, andValueWithAccumulator, testBitInReg, testBitInHL, callFunction, callFunctionConditional, condZ, condNZ, condC, condNC, compareRegistryFromAccumulator, compareHLAddressFromAccumulator, compareValueFromAccumulator } from '../src/instructions.js';
+import { addRegWithCarryToAccumulator, addRegToAccumulator, addValueWithCarryToAccumulator, addValueToAccumulator, addValueToSP, andRegWithAccumulator, andHLWithAccumulator, andValueWithAccumulator, testBitInReg, testBitInHL, callFunction, callFunctionConditional, condZ, condNZ, condC, condNC, compareRegistryFromAccumulator, compareHLAddressFromAccumulator, compareValueFromAccumulator, decimalAdjustAccumulator, decrementRegistry, decrementHLAddress, decrementR16, decrementSP } from '../src/instructions.js';
 import { CPU } from '../src/cpu.js';
 
 const Flags = Object.freeze({
@@ -12,6 +12,9 @@ const Flags = Object.freeze({
 });
 
 function createCpu({ a = 0x00, f = 0x00, b = 0x00, c = 0x00, h = 0x00, l = 0x00, sp = 0x0000, memoryValue = 0x00 } = {}) {
+  const memory = new Uint8Array(0x10000);
+  const hl = (h << 8) | l;
+  memory[hl] = memoryValue;
   return {
     registers: {
       A: a,
@@ -24,8 +27,11 @@ function createCpu({ a = 0x00, f = 0x00, b = 0x00, c = 0x00, h = 0x00, l = 0x00,
       L: l,
     },
     sp,
-    readMemory() {
-      return memoryValue;
+    readMemory(address) {
+      return memory[address & 0xffff];
+    },
+    writeMemory(address, value) {
+      memory[address & 0xffff] = value & 0xff;
     },
   };
 }
@@ -412,4 +418,180 @@ test('CP A, n8 sets C when immediate value is greater than A', () => {
 
   assert.equal(cpu.registers.F & Flags.Carry, Flags.Carry);
   assert.equal(cpu.registers.F & Flags.Substraction, Flags.Substraction);
+});
+
+test('DAA corrects A after BCD addition with invalid lower nibble', () => {
+  // 9 + 1 = 0x0A in binary, DAA should correct to 0x10 (BCD 10)
+  const cpu = createCpu({ a: 0x0a, f: 0x00 });
+
+  decimalAdjustAccumulator(cpu);
+
+  assert.equal(cpu.registers.A, 0x10);
+  assert.equal(cpu.registers.F & Flags.Zero, 0x00);
+  assert.equal(cpu.registers.F & Flags.HalfCarry, 0x00);
+});
+
+test('DAA corrects A after BCD addition with half-carry set', () => {
+  // ADD left H set, lower nibble already wrapped
+  const cpu = createCpu({ a: 0x00, f: Flags.HalfCarry });
+
+  decimalAdjustAccumulator(cpu);
+
+  assert.equal(cpu.registers.A, 0x06);
+  assert.equal(cpu.registers.F & Flags.HalfCarry, 0x00);
+});
+
+test('DAA corrects A after BCD addition with upper nibble overflow', () => {
+  // 0x99 + 0x01 = 0x9A, upper nibble also needs fixing
+  const cpu = createCpu({ a: 0x9a, f: 0x00 });
+
+  decimalAdjustAccumulator(cpu);
+
+  assert.equal(cpu.registers.A, 0x00);
+  assert.equal(cpu.registers.F & Flags.Zero, Flags.Zero);
+  assert.equal(cpu.registers.F & Flags.Carry, Flags.Carry);
+});
+
+test('DAA sets Z when result is 0x00 after correction', () => {
+  const cpu = createCpu({ a: 0x9a, f: 0x00 });
+
+  decimalAdjustAccumulator(cpu);
+
+  assert.equal(cpu.registers.A, 0x00);
+  assert.equal(cpu.registers.F & Flags.Zero, Flags.Zero);
+});
+
+test('DAA corrects A after BCD subtraction with half-carry', () => {
+  // subtraction left H set, lower nibble needs -0x06 correction
+  const cpu = createCpu({ a: 0x0f, f: Flags.Substraction | Flags.HalfCarry });
+
+  decimalAdjustAccumulator(cpu);
+
+  assert.equal(cpu.registers.A, 0x09);
+  assert.equal(cpu.registers.F & Flags.HalfCarry, 0x00);
+});
+
+test('DAA corrects A after BCD subtraction with carry', () => {
+  // subtraction left C set, upper nibble needs -0x60 correction
+  const cpu = createCpu({ a: 0xf0, f: Flags.Substraction | Flags.Carry });
+
+  decimalAdjustAccumulator(cpu);
+
+  assert.equal(cpu.registers.A, 0x90);
+  assert.equal(cpu.registers.F & Flags.Carry, Flags.Carry);
+});
+
+test('DAA always clears H', () => {
+  const cpu = createCpu({ a: 0x00, f: Flags.HalfCarry });
+
+  decimalAdjustAccumulator(cpu);
+
+  assert.equal(cpu.registers.F & Flags.HalfCarry, 0x00);
+});
+
+test('DEC r8 decrements the register by 1', () => {
+  const cpu = createCpu({ b: 0x05 });
+
+  decrementRegistry(cpu, 'B');
+
+  assert.equal(cpu.registers.B, 0x04);
+  assert.equal(cpu.registers.F & Flags.Zero, 0x00);
+  assert.equal(cpu.registers.F & Flags.Substraction, Flags.Substraction);
+  assert.equal(cpu.registers.F & Flags.HalfCarry, 0x00);
+});
+
+test('DEC r8 sets Z when result is 0', () => {
+  const cpu = createCpu({ b: 0x01 });
+
+  decrementRegistry(cpu, 'B');
+
+  assert.equal(cpu.registers.B, 0x00);
+  assert.equal(cpu.registers.F & Flags.Zero, Flags.Zero);
+  assert.equal(cpu.registers.F & Flags.Substraction, Flags.Substraction);
+});
+
+test('DEC r8 wraps from 0x00 to 0xff', () => {
+  const cpu = createCpu({ b: 0x00 });
+
+  decrementRegistry(cpu, 'B');
+
+  assert.equal(cpu.registers.B, 0xff);
+  assert.equal(cpu.registers.F & Flags.Zero, 0x00);
+});
+
+test('DEC r8 sets H when lower nibble borrows from bit 4', () => {
+  const cpu = createCpu({ b: 0x10 });
+
+  decrementRegistry(cpu, 'B');
+
+  assert.equal(cpu.registers.B, 0x0f);
+  assert.equal(cpu.registers.F & Flags.HalfCarry, Flags.HalfCarry);
+});
+
+test('DEC r8 preserves the carry flag', () => {
+  const cpu = createCpu({ b: 0x05, f: Flags.Carry });
+
+  decrementRegistry(cpu, 'B');
+
+  assert.equal(cpu.registers.F & Flags.Carry, Flags.Carry);
+});
+
+test('DEC [HL] decrements the value at the HL address', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0x05 });
+
+  decrementHLAddress(cpu);
+
+  assert.equal(cpu.readMemory(0xc000), 0x04);
+  assert.equal(cpu.registers.F & Flags.Substraction, Flags.Substraction);
+});
+
+test('DEC [HL] sets Z when result is 0', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0x01 });
+
+  decrementHLAddress(cpu);
+
+  assert.equal(cpu.readMemory(0xc000), 0x00);
+  assert.equal(cpu.registers.F & Flags.Zero, Flags.Zero);
+});
+
+test('DEC r16 decrements a 16-bit register pair', () => {
+  const cpu = createCpu({ b: 0x00, c: 0x01 });
+
+  decrementR16(cpu, 'B', 'C');
+
+  assert.equal(cpu.registers.B, 0x00);
+  assert.equal(cpu.registers.C, 0x00);
+});
+
+test('DEC r16 borrows across high and low bytes', () => {
+  const cpu = createCpu({ b: 0x01, c: 0x00 });
+
+  decrementR16(cpu, 'B', 'C');
+
+  assert.equal(cpu.registers.B, 0x00);
+  assert.equal(cpu.registers.C, 0xff);
+});
+
+test('DEC r16 does not affect flags', () => {
+  const cpu = createCpu({ b: 0x00, c: 0x01, f: Flags.Zero | Flags.Carry });
+
+  decrementR16(cpu, 'B', 'C');
+
+  assert.equal(cpu.registers.F, Flags.Zero | Flags.Carry);
+});
+
+test('DEC SP decrements SP by 1', () => {
+  const cpu = createCpu({ sp: 0x0010 });
+
+  decrementSP(cpu);
+
+  assert.equal(cpu.sp, 0x000f);
+});
+
+test('DEC SP wraps from 0x0000 to 0xffff', () => {
+  const cpu = createCpu({ sp: 0x0000 });
+
+  decrementSP(cpu);
+
+  assert.equal(cpu.sp, 0xffff);
 });

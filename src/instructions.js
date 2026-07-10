@@ -5,14 +5,19 @@ const Flags = Object.freeze({
     Carry: 1 << 4,
 });
 
-export const condZ  = (cpu) => (cpu.registers.F & Flags.Zero) !== 0;
+export const condZ = (cpu) => (cpu.registers.F & Flags.Zero) !== 0;
 export const condNZ = (cpu) => (cpu.registers.F & Flags.Zero) === 0;
-export const condC  = (cpu) => (cpu.registers.F & Flags.Carry) !== 0;
+export const condC = (cpu) => (cpu.registers.F & Flags.Carry) !== 0;
 export const condNC = (cpu) => (cpu.registers.F & Flags.Carry) === 0;
 
 export const readHLAddress = (cpu) => {
     const address = ((cpu.registers.H << 8) | cpu.registers.L) & 0xffff;
     return cpu.readMemory(address, false);
+}
+
+export const writeHLAddress = (cpu, value) => {
+    const address = ((cpu.registers.H << 8) | cpu.registers.L) & 0xffff;
+    cpu.writeMemory(address, value, false);
 }
 
 /*
@@ -94,13 +99,13 @@ export const addHLAddressWithCarryToAccumulator = (cpu) => {
     const value = cpu.readMemory(address, false);
 
     addToAccumulator(cpu, value, true);
-    
+
     return cycles;
 }
 
 export const addValueWithCarryToAccumulator = (cpu, value) => {
     const cycles = 2;
-    addToAccumulator(cpu, value, true);    
+    addToAccumulator(cpu, value, true);
     return cycles;
 }
 
@@ -119,13 +124,13 @@ export const addHLAddressToAccumulator = (cpu) => {
     const value = cpu.readMemory(address, false);
 
     addToAccumulator(cpu, value, false);
-    
+
     return cycles;
 }
 
 export const addValueToAccumulator = (cpu, value) => {
     const cycles = 2;
-    addToAccumulator(cpu, value, false);    
+    addToAccumulator(cpu, value, false);
     return cycles;
 }
 
@@ -135,7 +140,7 @@ export const addRegToHL = (cpu, registerHigh, registerLow) => {
     const cycles = 2;
 
     const value = ((cpu.registers[registerHigh] << 8) | cpu.registers[registerLow]) & 0xffff;
-    
+
     addToHL(cpu, value);
 
     return cycles;
@@ -145,7 +150,7 @@ export const addSPToHl = (cpu) => {
     const cycles = 2;
 
     addToHL(cpu, cpu.sp);
-    
+
     return cycles;
 }
 
@@ -166,7 +171,7 @@ function addToHL(cpu, value) {
 }
 
 export const addValueToSP = (cpu, value) => {
-    
+
     const cycles = 4;
     const e8 = (value << 24) >> 24;
 
@@ -183,14 +188,14 @@ export const addValueToSP = (cpu, value) => {
 }
 
 function andWithAccumulator(cpu, value) {
-    
+
     const a = cpu.registers.A & 0xff;
     const comp = a & value;
 
     cpu.registers.A = comp & 0xff;
     cpu.registers.F = 0x00;
 
-    if(comp === 0)
+    if (comp === 0)
         cpu.registers.F |= Flags.Zero;
 
     cpu.registers.F |= Flags.HalfCarry;
@@ -213,7 +218,7 @@ export const andHLWithAccumulator = (cpu) => {
 
     const hl = ((cpu.registers.H << 8) | cpu.registers.L) & 0xffff;
     const value = cpu.readMemory(hl, false) & 0xff;
-    
+
     andWithAccumulator(cpu, value);
 
     return cycles;
@@ -259,14 +264,14 @@ export const callFunction = (cpu, address) => {
     cpu.writeMemory(cpu.sp, (pc >> 8) & 0xff, false);
     cpu.sp = (cpu.sp - 1) & 0xffff;
     cpu.writeMemory(cpu.sp, pc & 0xff, false);
-    
+
     cpu.pc = address & 0xffff;
 
     return cycles;
 }
 
 export const callFunctionConditional = (cpu, address, condition) => {
-    if(!condition(cpu)) {
+    if (!condition(cpu)) {
         return 3;
     } else {
         return callFunction(cpu, address);
@@ -284,7 +289,7 @@ export const complementCarryFlag = (cpu) => {
 }
 
 function compareWithAccumulator(cpu, value) {
-    
+
     const sub = (cpu.registers.A & 0xff) - value;
 
     cpu.registers.F = 0x00;
@@ -300,7 +305,7 @@ export const compareRegistryFromAccumulator = (cpu, register) => {
 
     const value = cpu.registers[register] & 0xff;
     compareWithAccumulator(cpu, value);
-    
+
     return cycles;
 }
 
@@ -309,14 +314,134 @@ export const compareHLAddressFromAccumulator = (cpu) => {
 
     const value = readHLAddress(cpu) & 0xff;
     compareWithAccumulator(cpu, value);
-    
+
     return cycles;
 }
 
 export const compareValueFromAccumulator = (cpu, value) => {
     const cycles = 2;
-    
+
     compareWithAccumulator(cpu, value & 0xff);
 
+    return cycles;
+}
+
+export const complementAccumulator = (cpu) => {
+    const cycles = 1;
+    cpu.registers.A = (~cpu.registers.A) & 0xff;
+    cpu.registers.F |= Flags.Substraction;
+    cpu.registers.F |= Flags.HalfCarry;
+    return cycles;
+}
+
+export const decimalAdjustAccumulator = (cpu) => {
+    const cycles = 1;
+
+    const a = cpu.registers.A & 0xff;
+    let correction = 0;
+    let carryFlag = carry(cpu) !== 0;
+
+    if (!substraction(cpu)) {
+        if (((a & 0x0f) > 0x09) || halfCarry(cpu)) {
+            correction |= 0x06;
+        }
+
+        if (((a + correction) & 0xff) > 0x99 || carry(cpu)) {
+            correction |= 0x60;
+            carryFlag = true;
+        }
+        cpu.registers.A = (a + correction) & 0xff;
+
+    }
+    else {
+        if (halfCarry(cpu)) {
+            correction |= 0x06;
+        }
+
+        if (carry(cpu)) {
+            correction |= 0x60;
+        }
+
+        cpu.registers.A = (a - correction) & 0xff;
+
+    }
+
+
+    cpu.registers.F &= ~Flags.HalfCarry;
+    cpu.registers.F &= ~Flags.Zero;
+
+    cpu.registers.F |= cpu.registers.A === 0 ? Flags.Zero : 0x00;
+    cpu.registers.F = carryFlag ?
+        cpu.registers.F | Flags.Carry :
+        cpu.registers.F & ~Flags.Carry;
+
+    return cycles;
+}
+
+function decrementFlags(cpu, originalValue, newValue) {
+    let flags = cpu.registers.F & Flags.Carry;
+    flags |= newValue === 0 ? Flags.Zero : 0x00;
+    flags |= Flags.Substraction;
+    flags |= (originalValue & 0x0f) === 0x00 ? Flags.HalfCarry : 0x00;
+
+    cpu.registers.F = flags;
+}
+
+export const decrementRegistry = (cpu, register) => {
+    const cycles = 1;
+
+    const reg = cpu.registers[register] & 0xff;
+    const newValue = (reg - 1) & 0xff;
+    decrementFlags(cpu, reg, newValue);
+    cpu.registers[register] = newValue;
+
+    return cycles;
+}
+
+export const decrementHLAddress = (cpu) => {
+    const cycles = 3;
+
+    const hl = readHLAddress(cpu) & 0xff;
+    const newValue = (hl - 1) & 0xff;
+    decrementFlags(cpu, hl, newValue);
+    writeHLAddress(cpu, newValue);
+    return cycles;
+}
+
+export const decrementR16 = (cpu, registerHigh, registerLow) => {
+    const cycles = 2;
+
+    const value = ((cpu.registers[registerHigh] << 8) | cpu.registers[registerLow]) & 0xffff;
+    const newValue = (value - 1) & 0xffff;
+
+    cpu.registers[registerHigh] = (newValue >> 8) & 0xff;
+    cpu.registers[registerLow] = newValue & 0xff;
+
+    return cycles;
+}
+
+export const decrementSP = (cpu) => {
+    const cycles = 2;
+    
+    cpu.sp = (cpu.sp - 1) & 0xffff;
+
+    return cycles;
+}
+
+export const disableInterrupts = (cpu) => {
+    const cycles = 1;
+    cpu.ime = false;
+    return cycles;
+}
+
+export const enableInterrupts = (cpu) => {
+    const cycles = 1;
+    cpu.ime = true;
+    return cycles;
+}
+
+export const haltCPU = (cpu) => {
+    const cycles = 4;
+    cpu.halted = true;
     return cycles;
 }

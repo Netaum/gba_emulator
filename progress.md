@@ -18,3 +18,6 @@
 ## Notes
 - Use this file to record the current step and progress.
 - Update the phase and tasks as you complete each learning goal.
+
+## Known simplifications to revisit
+- `EI` (enableInterrupts) sets `cpu.ime = true` immediately. On real hardware, IME is only enabled after the *next* instruction completes. Fix: use a `cpu.imeScheduled` flag in `enableInterrupts`, then check and apply it at the start of each `step()` cycle.

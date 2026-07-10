@@ -23,6 +23,7 @@ export class CPU {
     this.ime = false;
     this.mode = 'idle';
     this.memory = new Uint8Array(0x10000);
+    this.halted = false;
   }
 
   reset() {
@@ -41,6 +42,7 @@ export class CPU {
     this.ime = false;
     this.mode = 'idle';
     this.memory = new Uint8Array(0x10000);
+    this.halted = false;
 
   }
 
