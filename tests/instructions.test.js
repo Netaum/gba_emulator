@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { addRegWithCarryToAccumulator, addRegToAccumulator, addValueWithCarryToAccumulator, addValueToAccumulator, addValueToSP, andRegWithAccumulator, andHLWithAccumulator, andValueWithAccumulator, testBitInReg, testBitInHL, callFunction, callFunctionConditional, condZ, condNZ, condC, condNC, compareRegistryFromAccumulator, compareHLAddressFromAccumulator, compareValueFromAccumulator, decimalAdjustAccumulator, decrementRegistry, decrementHLAddress, decrementR16, decrementSP } from '../src/instructions.js';
+import { addRegWithCarryToAccumulator, addRegToAccumulator, addValueWithCarryToAccumulator, addValueToAccumulator, addValueToSP, andRegWithAccumulator, andHLWithAccumulator, andValueWithAccumulator, testBitInReg, testBitInHL, callFunction, callFunctionConditional, condZ, condNZ, condC, condNC, compareRegistryFromAccumulator, compareHLAddressFromAccumulator, compareValueFromAccumulator, decimalAdjustAccumulator, decrementRegistry, decrementHLAddress, decrementR16, decrementSP, incrementRegistry, incrementHLAddress, incrementR16, incrementSP, jumpToAddress, jumpToAddressConditional, jumpToHLAddress, jumpRelativeN16, jumpRelativeN16Conditional, loadRegisterWithRegister, loadRegisterWithValue, loadRegister16WithValue, loadHLAddressWithRegister, loadHLAddressWithValue, loadRegisterWithHLAddress, loadMemoryR16WithAccumulator, loadMemoryAddressWithAccumulator, loadMemoryRegisterCWithAccumulator, loadMemoryHLWithAccumulatorInc, loadMemoryHLWithAccumulatorDec, loadAccumulatorHLAddressInc, loadAccumulatorHLAddressDec, loadMemoryWithSP, loadHLWithSP, loadHLWithSP28 } from '../src/instructions.js';
 import { CPU } from '../src/cpu.js';
 
 const Flags = Object.freeze({
@@ -594,4 +594,456 @@ test('DEC SP wraps from 0x0000 to 0xffff', () => {
   decrementSP(cpu);
 
   assert.equal(cpu.sp, 0xffff);
+});
+
+test('INC r8 increments the register by 1', () => {
+  const cpu = createCpu({ b: 0x04 });
+
+  incrementRegistry(cpu, 'B');
+
+  assert.equal(cpu.registers.B, 0x05);
+  assert.equal(cpu.registers.F & Flags.Zero, 0x00);
+  assert.equal(cpu.registers.F & Flags.Substraction, 0x00);
+  assert.equal(cpu.registers.F & Flags.HalfCarry, 0x00);
+});
+
+test('INC r8 sets Z when result wraps to 0', () => {
+  const cpu = createCpu({ b: 0xff });
+
+  incrementRegistry(cpu, 'B');
+
+  assert.equal(cpu.registers.B, 0x00);
+  assert.equal(cpu.registers.F & Flags.Zero, Flags.Zero);
+});
+
+test('INC r8 sets H when lower nibble overflows', () => {
+  const cpu = createCpu({ b: 0x0f });
+
+  incrementRegistry(cpu, 'B');
+
+  assert.equal(cpu.registers.B, 0x10);
+  assert.equal(cpu.registers.F & Flags.HalfCarry, Flags.HalfCarry);
+  assert.equal(cpu.registers.F & Flags.Zero, 0x00);
+});
+
+test('INC r8 preserves the carry flag', () => {
+  const cpu = createCpu({ b: 0x04, f: Flags.Carry });
+
+  incrementRegistry(cpu, 'B');
+
+  assert.equal(cpu.registers.F & Flags.Carry, Flags.Carry);
+});
+
+test('INC r8 clears N flag', () => {
+  const cpu = createCpu({ b: 0x04, f: Flags.Substraction });
+
+  incrementRegistry(cpu, 'B');
+
+  assert.equal(cpu.registers.F & Flags.Substraction, 0x00);
+});
+
+test('INC [HL] increments the value at the HL address', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0x04 });
+
+  incrementHLAddress(cpu);
+
+  assert.equal(cpu.readMemory(0xc000), 0x05);
+  assert.equal(cpu.registers.F & Flags.Substraction, 0x00);
+});
+
+test('INC [HL] sets H when lower nibble overflows', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0x0f });
+
+  incrementHLAddress(cpu);
+
+  assert.equal(cpu.readMemory(0xc000), 0x10);
+  assert.equal(cpu.registers.F & Flags.HalfCarry, Flags.HalfCarry);
+});
+
+test('INC r16 increments a 16-bit register pair', () => {
+  const cpu = createCpu({ b: 0x00, c: 0xff });
+
+  incrementR16(cpu, 'B', 'C');
+
+  assert.equal(cpu.registers.B, 0x01);
+  assert.equal(cpu.registers.C, 0x00);
+});
+
+test('INC r16 wraps from 0xffff to 0x0000', () => {
+  const cpu = createCpu({ b: 0xff, c: 0xff });
+
+  incrementR16(cpu, 'B', 'C');
+
+  assert.equal(cpu.registers.B, 0x00);
+  assert.equal(cpu.registers.C, 0x00);
+});
+
+test('INC r16 does not affect flags', () => {
+  const cpu = createCpu({ b: 0x00, c: 0xff, f: Flags.Zero | Flags.Carry });
+
+  incrementR16(cpu, 'B', 'C');
+
+  assert.equal(cpu.registers.F, Flags.Zero | Flags.Carry);
+});
+
+test('INC SP increments SP by 1', () => {
+  const cpu = createCpu({ sp: 0x000f });
+
+  incrementSP(cpu);
+
+  assert.equal(cpu.sp, 0x0010);
+});
+
+test('INC SP wraps from 0xffff to 0x0000', () => {
+  const cpu = createCpu({ sp: 0xffff });
+
+  incrementSP(cpu);
+
+  assert.equal(cpu.sp, 0x0000);
+});
+
+test('JP n16 sets PC to the given address', () => {
+  const cpu = createCpu();
+
+  jumpToAddress(cpu, 0x0400);
+
+  assert.equal(cpu.pc, 0x0400);
+});
+
+test('JP n16 masks address to 16 bits', () => {
+  const cpu = createCpu();
+
+  jumpToAddress(cpu, 0x10400);
+
+  assert.equal(cpu.pc, 0x0400);
+});
+
+test('JP cc, n16 jumps when condition is true', () => {
+  const cpu = createCpu({ f: Flags.Zero });
+
+  const cycles = jumpToAddressConditional(cpu, 0x0400, condZ);
+
+  assert.equal(cpu.pc, 0x0400);
+  assert.equal(cycles, 4);
+});
+
+test('JP cc, n16 skips when condition is false', () => {
+  const cpu = createCpu({ f: 0x00 });
+  cpu.pc = 0x0200;
+
+  const cycles = jumpToAddressConditional(cpu, 0x0400, condZ);
+
+  assert.equal(cpu.pc, 0x0200);
+  assert.equal(cycles, 3);
+});
+
+test('JP cc, n16 condNZ jumps when Z is clear', () => {
+  const cpu = createCpu({ f: 0x00 });
+
+  jumpToAddressConditional(cpu, 0x0400, condNZ);
+
+  assert.equal(cpu.pc, 0x0400);
+});
+
+test('JP cc, n16 condC jumps when C is set', () => {
+  const cpu = createCpu({ f: Flags.Carry });
+
+  jumpToAddressConditional(cpu, 0x0400, condC);
+
+  assert.equal(cpu.pc, 0x0400);
+});
+
+test('JP cc, n16 condNC jumps when C is clear', () => {
+  const cpu = createCpu({ f: 0x00 });
+
+  jumpToAddressConditional(cpu, 0x0400, condNC);
+
+  assert.equal(cpu.pc, 0x0400);
+});
+
+test('JP HL sets PC to the value of HL', () => {
+  const cpu = createCpu({ h: 0x04, l: 0x00 });
+
+  jumpToHLAddress(cpu);
+
+  assert.equal(cpu.pc, 0x0400);
+});
+
+test('JP HL does not read memory at HL', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0xff });
+
+  jumpToHLAddress(cpu);
+
+  assert.equal(cpu.pc, 0xc000); // jumps to HL value, not what memory[HL] contains
+});
+
+test('JR e8 adds a positive offset to PC', () => {
+  const cpu = createCpu();
+  cpu.pc = 0x0200;
+
+  jumpRelativeN16(cpu, 0x05);
+
+  assert.equal(cpu.pc, 0x0205);
+});
+
+test('JR e8 adds a negative offset to PC (sign extension)', () => {
+  const cpu = createCpu();
+  cpu.pc = 0x0210;
+
+  jumpRelativeN16(cpu, 0xfc); // 0xfc = -4 as signed byte
+
+  assert.equal(cpu.pc, 0x020c);
+});
+
+test('JR e8 with offset 0xfe creates a backward jump of 2 (self loop)', () => {
+  const cpu = createCpu();
+  cpu.pc = 0x0210;
+
+  jumpRelativeN16(cpu, 0xfe); // -2
+
+  assert.equal(cpu.pc, 0x020e);
+});
+
+test('JR e8 wraps correctly at 0xffff boundary', () => {
+  const cpu = createCpu();
+  cpu.pc = 0xffff;
+
+  jumpRelativeN16(cpu, 0x01);
+
+  assert.equal(cpu.pc, 0x0000);
+});
+
+test('JR cc, e8 jumps when condition is true', () => {
+  const cpu = createCpu({ f: Flags.Zero });
+  cpu.pc = 0x0200;
+
+  const cycles = jumpRelativeN16Conditional(cpu, 0x05, condZ);
+
+  assert.equal(cpu.pc, 0x0205);
+  assert.equal(cycles, 3);
+});
+
+test('JR cc, e8 skips when condition is false', () => {
+  const cpu = createCpu({ f: 0x00 });
+  cpu.pc = 0x0200;
+
+  const cycles = jumpRelativeN16Conditional(cpu, 0x05, condZ);
+
+  assert.equal(cpu.pc, 0x0200);
+  assert.equal(cycles, 2);
+});
+
+test('JR cc, e8 condNZ jumps when Z is clear', () => {
+  const cpu = createCpu({ f: 0x00 });
+  cpu.pc = 0x0200;
+
+  jumpRelativeN16Conditional(cpu, 0x05, condNZ);
+
+  assert.equal(cpu.pc, 0x0205);
+});
+
+test('JR cc, e8 condC jumps when C is set', () => {
+  const cpu = createCpu({ f: Flags.Carry });
+  cpu.pc = 0x0200;
+
+  jumpRelativeN16Conditional(cpu, 0x05, condC);
+
+  assert.equal(cpu.pc, 0x0205);
+});
+
+test('JR cc, e8 condNC jumps when C is clear', () => {
+  const cpu = createCpu({ f: 0x00 });
+  cpu.pc = 0x0200;
+
+  jumpRelativeN16Conditional(cpu, 0x05, condNC);
+
+  assert.equal(cpu.pc, 0x0205);
+});
+
+test('LD r8, r8 copies register value', () => {
+  const cpu = createCpu({ b: 0x42 });
+
+  loadRegisterWithRegister(cpu, 'A', 'B');
+
+  assert.equal(cpu.registers.A, 0x42);
+  assert.equal(cpu.registers.B, 0x42); // source unchanged
+});
+
+test('LD r8, n8 loads immediate value into register', () => {
+  const cpu = createCpu();
+
+  loadRegisterWithValue(cpu, 'B', 0x42);
+
+  assert.equal(cpu.registers.B, 0x42);
+});
+
+test('LD r8, n8 masks value to 8 bits', () => {
+  const cpu = createCpu();
+
+  loadRegisterWithValue(cpu, 'B', 0x142);
+
+  assert.equal(cpu.registers.B, 0x42);
+});
+
+test('LD r16, n16 loads 16-bit value into register pair', () => {
+  const cpu = createCpu();
+
+  loadRegister16WithValue(cpu, 'B', 'C', 0x1234);
+
+  assert.equal(cpu.registers.B, 0x12);
+  assert.equal(cpu.registers.C, 0x34);
+});
+
+test('LD [HL], r8 writes register value to memory at HL', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, b: 0x42 });
+
+  loadHLAddressWithRegister(cpu, 'B');
+
+  assert.equal(cpu.readMemory(0xc000), 0x42);
+});
+
+test('LD [HL], n8 writes immediate value to memory at HL', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00 });
+
+  loadHLAddressWithValue(cpu, 0x42);
+
+  assert.equal(cpu.readMemory(0xc000), 0x42);
+});
+
+test('LD r8, [HL] loads value from memory at HL into register', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0x42 });
+
+  loadRegisterWithHLAddress(cpu, 'B');
+
+  assert.equal(cpu.registers.B, 0x42);
+});
+
+test('LD [r16], A writes A to memory at register pair address', () => {
+  const cpu = createCpu({ a: 0x42, b: 0xc0, c: 0x00 });
+
+  loadMemoryR16WithAccumulator(cpu, 'B', 'C');
+
+  assert.equal(cpu.readMemory(0xc000), 0x42);
+});
+
+test('LD [n16], A writes A to the given address', () => {
+  const cpu = createCpu({ a: 0x42 });
+
+  loadMemoryAddressWithAccumulator(cpu, 0xc000);
+
+  assert.equal(cpu.readMemory(0xc000), 0x42);
+});
+
+test('LD [C], A writes A to 0xFF00 + C', () => {
+  const cpu = createCpu({ a: 0x42, c: 0x40 });
+
+  loadMemoryRegisterCWithAccumulator(cpu);
+
+  assert.equal(cpu.readMemory(0xff40), 0x42);
+});
+
+test('LD [HL+], A writes A to [HL] then increments HL', () => {
+  const cpu = createCpu({ a: 0x42, h: 0xc0, l: 0x00 });
+
+  loadMemoryHLWithAccumulatorInc(cpu);
+
+  assert.equal(cpu.readMemory(0xc000), 0x42);
+  assert.equal(cpu.registers.H, 0xc0);
+  assert.equal(cpu.registers.L, 0x01);
+});
+
+test('LD [HL+], A increments HL across byte boundary', () => {
+  const cpu = createCpu({ a: 0x42, h: 0xc0, l: 0xff });
+
+  loadMemoryHLWithAccumulatorInc(cpu);
+
+  assert.equal(cpu.registers.H, 0xc1);
+  assert.equal(cpu.registers.L, 0x00);
+});
+
+test('LD [HL-], A writes A to [HL] then decrements HL', () => {
+  const cpu = createCpu({ a: 0x42, h: 0xc0, l: 0x01 });
+
+  loadMemoryHLWithAccumulatorDec(cpu);
+
+  assert.equal(cpu.readMemory(0xc001), 0x42);
+  assert.equal(cpu.registers.H, 0xc0);
+  assert.equal(cpu.registers.L, 0x00);
+});
+
+test('LD A, [HL+] reads from [HL] into A then increments HL', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0x42 });
+
+  loadAccumulatorHLAddressInc(cpu);
+
+  assert.equal(cpu.registers.A, 0x42);
+  assert.equal(cpu.registers.H, 0xc0);
+  assert.equal(cpu.registers.L, 0x01);
+});
+
+test('LD A, [HL-] reads from [HL] into A then decrements HL', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x01, memoryValue: 0x42 });
+
+  loadAccumulatorHLAddressDec(cpu);
+
+  assert.equal(cpu.registers.A, 0x42);
+  assert.equal(cpu.registers.H, 0xc0);
+  assert.equal(cpu.registers.L, 0x00);
+});
+
+test('LD [n16], SP writes SP low byte then high byte to memory', () => {
+  const cpu = createCpu({ sp: 0x1234 });
+
+  loadMemoryWithSP(cpu, 0xc000);
+
+  assert.equal(cpu.readMemory(0xc000), 0x34); // low byte
+  assert.equal(cpu.readMemory(0xc001), 0x12); // high byte
+});
+
+test('LD HL, SP copies SP into HL', () => {
+  const cpu = createCpu({ sp: 0x1234 });
+
+  loadHLWithSP(cpu);
+
+  assert.equal(cpu.registers.H, 0x12);
+  assert.equal(cpu.registers.L, 0x34);
+});
+
+test('LD HL, SP+e8 adds positive offset to SP and stores in HL', () => {
+  const cpu = createCpu({ sp: 0xfff0 });
+
+  loadHLWithSP28(cpu, 0x05);
+
+  assert.equal(cpu.registers.H, 0xff);
+  assert.equal(cpu.registers.L, 0xf5);
+  assert.equal(cpu.registers.F & Flags.Zero, 0x00);
+  assert.equal(cpu.registers.F & Flags.Substraction, 0x00);
+});
+
+test('LD HL, SP+e8 adds negative offset to SP and stores in HL', () => {
+  const cpu = createCpu({ sp: 0xfff0 });
+
+  loadHLWithSP28(cpu, 0xfc); // -4
+
+  assert.equal(cpu.registers.H, 0xff);
+  assert.equal(cpu.registers.L, 0xec);
+});
+
+test('LD HL, SP+e8 sets H and C flags correctly', () => {
+  const cpu = createCpu({ sp: 0x00ff });
+
+  loadHLWithSP28(cpu, 0x01);
+
+  assert.equal(cpu.registers.H, 0x01);
+  assert.equal(cpu.registers.L, 0x00);
+  assert.equal(cpu.registers.F & Flags.HalfCarry, Flags.HalfCarry);
+  assert.equal(cpu.registers.F & Flags.Carry, Flags.Carry);
+});
+
+test('LD HL, SP+e8 does not modify SP', () => {
+  const cpu = createCpu({ sp: 0xfff0 });
+
+  loadHLWithSP28(cpu, 0x05);
+
+  assert.equal(cpu.sp, 0xfff0);
 });
