@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { addRegWithCarryToAccumulator, addRegToAccumulator, addValueWithCarryToAccumulator, addValueToAccumulator, addValueToSP, andRegWithAccumulator, andHLWithAccumulator, andValueWithAccumulator, testBitInReg, testBitInHL, callFunction, callFunctionConditional, condZ, condNZ, condC, condNC, compareRegistryFromAccumulator, compareHLAddressFromAccumulator, compareValueFromAccumulator, decimalAdjustAccumulator, decrementRegistry, decrementHLAddress, decrementR16, decrementSP, incrementRegistry, incrementHLAddress, incrementR16, incrementSP, jumpToAddress, jumpToAddressConditional, jumpToHLAddress, jumpRelativeN16, jumpRelativeN16Conditional, loadRegisterWithRegister, loadRegisterWithValue, loadRegister16WithValue, loadHLAddressWithRegister, loadHLAddressWithValue, loadRegisterWithHLAddress, loadMemoryR16WithAccumulator, loadMemoryAddressWithAccumulator, loadMemoryRegisterCWithAccumulator, loadMemoryHLWithAccumulatorInc, loadMemoryHLWithAccumulatorDec, loadAccumulatorHLAddressInc, loadAccumulatorHLAddressDec, loadMemoryWithSP, loadHLWithSP, loadHLWithSP28 } from '../src/instructions.js';
+import { addRegWithCarryToAccumulator, addRegToAccumulator, addValueWithCarryToAccumulator, addValueToAccumulator, addValueToSP, andRegWithAccumulator, andHLWithAccumulator, andValueWithAccumulator, testBitInReg, testBitInHL, callFunction, callFunctionConditional, condZ, condNZ, condC, condNC, compareRegistryFromAccumulator, compareHLAddressFromAccumulator, compareValueFromAccumulator, decimalAdjustAccumulator, decrementRegistry, decrementHLAddress, decrementR16, decrementSP, incrementRegistry, incrementHLAddress, incrementR16, incrementSP, jumpToAddress, jumpToAddressConditional, jumpToHLAddress, jumpRelativeN16, jumpRelativeN16Conditional, loadRegisterWithRegister, loadRegisterWithValue, loadRegister16WithValue, loadHLAddressWithRegister, loadHLAddressWithValue, loadRegisterWithHLAddress, loadMemoryR16WithAccumulator, loadMemoryAddressWithAccumulator, loadMemoryRegisterCWithAccumulator, loadMemoryHLWithAccumulatorInc, loadMemoryHLWithAccumulatorDec, loadAccumulatorHLAddressInc, loadAccumulatorHLAddressDec, loadMemoryWithSP, loadHLWithSP, loadHLWithSP28, orRegWithAccumulator, orHLWithAccumulator, orValueWithAccumulator, popRegister16, popRegisterAF, resetBitInReg, resetBitInHLMemoryAddress, returnFromSubrotine, returnFromSubrotineConditional, returnFromInterrupt, rotateRegisterLeftWithCarry, rotateHLAddressLeftWithCarry, rotateAccumulatorLeftWithCarry, rotateRegisterLeft, rotateHLAddressLeft, rotateAccumulatorLeft } from '../src/instructions.js';
 import { CPU } from '../src/cpu.js';
 
 const Flags = Object.freeze({
@@ -1046,4 +1046,429 @@ test('LD HL, SP+e8 does not modify SP', () => {
   loadHLWithSP28(cpu, 0x05);
 
   assert.equal(cpu.sp, 0xfff0);
+});
+
+test('OR A, r8 ORs register with accumulator', () => {
+  const cpu = createCpu({ a: 0b10110000, b: 0b00001101 });
+
+  orRegWithAccumulator(cpu, 'B');
+
+  assert.equal(cpu.registers.A, 0b10111101);
+  assert.equal(cpu.registers.F & Flags.Zero, 0x00);
+  assert.equal(cpu.registers.F & Flags.Substraction, 0x00);
+  assert.equal(cpu.registers.F & Flags.HalfCarry, 0x00);
+  assert.equal(cpu.registers.F & Flags.Carry, 0x00);
+});
+
+test('OR A, r8 sets Zero flag when result is zero', () => {
+  const cpu = createCpu({ a: 0x00, b: 0x00 });
+
+  orRegWithAccumulator(cpu, 'B');
+
+  assert.equal(cpu.registers.A, 0x00);
+  assert.equal(cpu.registers.F & Flags.Zero, Flags.Zero);
+});
+
+test('OR A, r8 clears all flags when result is non-zero', () => {
+  const cpu = createCpu({ a: 0x01, b: 0x01, f: Flags.Substraction | Flags.HalfCarry | Flags.Carry });
+
+  orRegWithAccumulator(cpu, 'B');
+
+  assert.equal(cpu.registers.F, 0x00);
+});
+
+test('OR A, r8 returns 1 cycle', () => {
+  const cpu = createCpu({ a: 0x01, b: 0x02 });
+  assert.equal(orRegWithAccumulator(cpu, 'B'), 1);
+});
+
+test('OR A, [HL] ORs memory at HL with accumulator', () => {
+  const cpu = createCpu({ a: 0b11000000, h: 0x20, l: 0x00, memoryValue: 0b00111100 });
+
+  orHLWithAccumulator(cpu);
+
+  assert.equal(cpu.registers.A, 0b11111100);
+  assert.equal(cpu.registers.F & Flags.Zero, 0x00);
+});
+
+test('OR A, [HL] sets Zero flag when result is zero', () => {
+  const cpu = createCpu({ a: 0x00, h: 0x20, l: 0x00, memoryValue: 0x00 });
+
+  orHLWithAccumulator(cpu);
+
+  assert.equal(cpu.registers.A, 0x00);
+  assert.equal(cpu.registers.F & Flags.Zero, Flags.Zero);
+});
+
+test('OR A, [HL] returns 2 cycles', () => {
+  const cpu = createCpu({ a: 0x01, h: 0x20, l: 0x00, memoryValue: 0x02 });
+  assert.equal(orHLWithAccumulator(cpu), 2);
+});
+
+test('OR A, n8 ORs immediate value with accumulator', () => {
+  const cpu = createCpu({ a: 0b10100101 });
+
+  orValueWithAccumulator(cpu, 0b01011010);
+
+  assert.equal(cpu.registers.A, 0xff);
+  assert.equal(cpu.registers.F & Flags.Zero, 0x00);
+});
+
+test('OR A, n8 sets Zero flag when result is zero', () => {
+  const cpu = createCpu({ a: 0x00 });
+
+  orValueWithAccumulator(cpu, 0x00);
+
+  assert.equal(cpu.registers.A, 0x00);
+  assert.equal(cpu.registers.F & Flags.Zero, Flags.Zero);
+});
+
+test('OR A, n8 returns 2 cycles', () => {
+  const cpu = createCpu({ a: 0x01 });
+  assert.equal(orValueWithAccumulator(cpu, 0x01), 2);
+});
+
+test('POP r16 reads low byte into low register and high byte into high register', () => {
+  const cpu = createCpu({ sp: 0xFFFC });
+  cpu.writeMemory(0xFFFC, 0x34); // low byte → C
+  cpu.writeMemory(0xFFFD, 0x12); // high byte → B
+  popRegister16(cpu, 'B', 'C');
+  assert.equal(cpu.registers.B, 0x12);
+  assert.equal(cpu.registers.C, 0x34);
+});
+
+test('POP r16 increments SP by 2', () => {
+  const cpu = createCpu({ sp: 0xFFFC });
+  cpu.writeMemory(0xFFFC, 0x00);
+  cpu.writeMemory(0xFFFD, 0x00);
+  popRegister16(cpu, 'B', 'C');
+  assert.equal(cpu.sp, 0xFFFE);
+});
+
+test('POP r16 wraps SP correctly at 0xFFFF', () => {
+  const cpu = createCpu({ sp: 0xFFFF });
+  cpu.writeMemory(0xFFFF, 0xAB); // low byte
+  cpu.writeMemory(0x0000, 0xCD); // high byte (wraps)
+  popRegister16(cpu, 'D', 'E');
+  assert.equal(cpu.registers.E, 0xAB);
+  assert.equal(cpu.registers.D, 0xCD);
+  assert.equal(cpu.sp, 0x0001);
+});
+
+test('POP r16 returns 3 cycles', () => {
+  const cpu = createCpu({ sp: 0xFFFC });
+  cpu.writeMemory(0xFFFC, 0x00);
+  cpu.writeMemory(0xFFFD, 0x00);
+  assert.equal(popRegister16(cpu, 'H', 'L'), 3);
+});
+
+test('POP AF reads A and masks lower nibble of F', () => {
+  const cpu = createCpu({ sp: 0xFFFC });
+  cpu.writeMemory(0xFFFC, 0xFF); // would-be F value with lower nibble set
+  cpu.writeMemory(0xFFFD, 0x42); // A value
+  popRegisterAF(cpu);
+  assert.equal(cpu.registers.A, 0x42);
+  assert.equal(cpu.registers.F, 0xF0); // lower nibble masked to 0
+});
+
+test('POP AF clears lower nibble of F regardless of stack value', () => {
+  const cpu = createCpu({ sp: 0xFFFC });
+  cpu.writeMemory(0xFFFC, 0x1F); // lower nibble = 0xF
+  cpu.writeMemory(0xFFFD, 0x00);
+  popRegisterAF(cpu);
+  assert.equal(cpu.registers.F, 0x10); // 0x1F & 0xF0 = 0x10
+});
+
+test('POP AF increments SP by 2', () => {
+  const cpu = createCpu({ sp: 0xFFFC });
+  cpu.writeMemory(0xFFFC, 0x00);
+  cpu.writeMemory(0xFFFD, 0x00);
+  popRegisterAF(cpu);
+  assert.equal(cpu.sp, 0xFFFE);
+});
+
+test('POP AF returns 3 cycles', () => {
+  const cpu = createCpu({ sp: 0xFFFC });
+  cpu.writeMemory(0xFFFC, 0x00);
+  cpu.writeMemory(0xFFFD, 0x00);
+  assert.equal(popRegisterAF(cpu), 3);
+});
+
+test('RES u3, r8 clears the target bit', () => {
+  const cpu = createCpu({ b: 0b11111111 });
+  resetBitInReg(cpu, 'B', 3);
+  assert.equal(cpu.registers.B, 0b11110111);
+});
+
+test('RES u3, r8 leaves other bits unchanged', () => {
+  const cpu = createCpu({ b: 0b10101010 });
+  resetBitInReg(cpu, 'B', 1);
+  assert.equal(cpu.registers.B, 0b10101000);
+});
+
+test('RES u3, r8 clearing an already-clear bit is a no-op', () => {
+  const cpu = createCpu({ b: 0b00000000 });
+  resetBitInReg(cpu, 'B', 5);
+  assert.equal(cpu.registers.B, 0b00000000);
+});
+
+test('RES u3, r8 does not affect flags', () => {
+  const cpu = createCpu({ b: 0xff, f: Flags.Zero | Flags.Carry });
+  resetBitInReg(cpu, 'B', 0);
+  assert.equal(cpu.registers.F, Flags.Zero | Flags.Carry);
+});
+
+test('RES u3, r8 returns 2 cycles', () => {
+  const cpu = createCpu({ b: 0xff });
+  assert.equal(resetBitInReg(cpu, 'B', 0), 2);
+});
+
+test('RES u3, [HL] clears the target bit in memory', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0b11111111 });
+  resetBitInHLMemoryAddress(cpu, 3);
+  assert.equal(cpu.readMemory(0xc000), 0b11110111);
+});
+
+test('RES u3, [HL] leaves other bits in memory unchanged', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0b10101010 });
+  resetBitInHLMemoryAddress(cpu, 1);
+  assert.equal(cpu.readMemory(0xc000), 0b10101000);
+});
+
+test('RES u3, [HL] does not affect flags', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0xff, f: Flags.Carry });
+  resetBitInHLMemoryAddress(cpu, 0);
+  assert.equal(cpu.registers.F, Flags.Carry);
+});
+
+test('RES u3, [HL] returns 4 cycles', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0xff });
+  assert.equal(resetBitInHLMemoryAddress(cpu, 0), 4);
+});
+
+test('RET pops address from stack and sets PC', () => {
+  const cpu = createCpu({ sp: 0xFFFC });
+  cpu.writeMemory(0xFFFC, 0x03); // low byte
+  cpu.writeMemory(0xFFFD, 0x02); // high byte → PC = 0x0203
+  returnFromSubrotine(cpu);
+  assert.equal(cpu.pc, 0x0203);
+});
+
+test('RET increments SP by 2', () => {
+  const cpu = createCpu({ sp: 0xFFFC });
+  cpu.writeMemory(0xFFFC, 0x00);
+  cpu.writeMemory(0xFFFD, 0x00);
+  returnFromSubrotine(cpu);
+  assert.equal(cpu.sp, 0xFFFE);
+});
+
+test('RET wraps SP correctly at 0xFFFF', () => {
+  const cpu = createCpu({ sp: 0xFFFF });
+  cpu.writeMemory(0xFFFF, 0x00); // low byte
+  cpu.writeMemory(0x0000, 0x01); // high byte (wraps)
+  returnFromSubrotine(cpu);
+  assert.equal(cpu.pc, 0x0100);
+  assert.equal(cpu.sp, 0x0001);
+});
+
+test('RET returns 4 cycles', () => {
+  const cpu = createCpu({ sp: 0xFFFC });
+  cpu.writeMemory(0xFFFC, 0x00);
+  cpu.writeMemory(0xFFFD, 0x00);
+  assert.equal(returnFromSubrotine(cpu), 4);
+});
+
+test('RET cc returns and sets PC when condition is true', () => {
+  const cpu = createCpu({ sp: 0xFFFC, f: Flags.Zero });
+  cpu.writeMemory(0xFFFC, 0x03);
+  cpu.writeMemory(0xFFFD, 0x02);
+  returnFromSubrotineConditional(cpu, condZ);
+  assert.equal(cpu.pc, 0x0203);
+  assert.equal(cpu.sp, 0xFFFE);
+});
+
+test('RET cc does not return when condition is false', () => {
+  const cpu = createCpu({ sp: 0xFFFC, f: 0x00 });
+  cpu.pc = 0x0100;
+  returnFromSubrotineConditional(cpu, condZ);
+  assert.equal(cpu.pc, 0x0100); // PC unchanged
+  assert.equal(cpu.sp, 0xFFFC); // SP unchanged
+});
+
+test('RET cc returns 5 cycles when condition is true', () => {
+  const cpu = createCpu({ sp: 0xFFFC, f: Flags.Zero });
+  cpu.writeMemory(0xFFFC, 0x00);
+  cpu.writeMemory(0xFFFD, 0x00);
+  assert.equal(returnFromSubrotineConditional(cpu, condZ), 5);
+});
+
+test('RET cc returns 2 cycles when condition is false', () => {
+  const cpu = createCpu({ sp: 0xFFFC, f: 0x00 });
+  assert.equal(returnFromSubrotineConditional(cpu, condZ), 2);
+});
+
+test('RETI pops address from stack, sets PC, and enables IME', () => {
+  const cpu = createCpu({ sp: 0xFFFC });
+  cpu.ime = false;
+  cpu.writeMemory(0xFFFC, 0x03);
+  cpu.writeMemory(0xFFFD, 0x02);
+  returnFromInterrupt(cpu);
+  assert.equal(cpu.pc, 0x0203);
+  assert.equal(cpu.ime, true);
+});
+
+test('RETI returns 4 cycles', () => {
+  const cpu = createCpu({ sp: 0xFFFC });
+  cpu.ime = false;
+  cpu.writeMemory(0xFFFC, 0x00);
+  cpu.writeMemory(0xFFFD, 0x00);
+  assert.equal(returnFromInterrupt(cpu), 4);
+});
+
+test('RL r8 rotates left through carry, carry-in becomes bit 0', () => {
+  const cpu = createCpu({ b: 0b00000000, f: Flags.Carry });
+  rotateRegisterLeftWithCarry(cpu, 'B');
+  assert.equal(cpu.registers.B, 0b00000001);
+});
+
+test('RL r8 old bit 7 becomes new carry', () => {
+  const cpu = createCpu({ b: 0b10000000, f: 0x00 });
+  rotateRegisterLeftWithCarry(cpu, 'B');
+  assert.equal(cpu.registers.B, 0b00000000);
+  assert.equal(cpu.registers.F & Flags.Carry, Flags.Carry);
+});
+
+test('RL r8 sets Zero flag when result is zero', () => {
+  const cpu = createCpu({ b: 0b00000000, f: 0x00 });
+  rotateRegisterLeftWithCarry(cpu, 'B');
+  assert.equal(cpu.registers.F & Flags.Zero, Flags.Zero);
+});
+
+test('RL r8 clears Zero flag when result is non-zero', () => {
+  const cpu = createCpu({ b: 0b00000001, f: 0x00 });
+  rotateRegisterLeftWithCarry(cpu, 'B');
+  assert.equal(cpu.registers.F & Flags.Zero, 0x00);
+});
+
+test('RL r8 clears N and H flags', () => {
+  const cpu = createCpu({ b: 0b00000001, f: Flags.Substraction | Flags.HalfCarry });
+  rotateRegisterLeftWithCarry(cpu, 'B');
+  assert.equal(cpu.registers.F & Flags.Substraction, 0x00);
+  assert.equal(cpu.registers.F & Flags.HalfCarry, 0x00);
+});
+
+test('RL r8 returns 2 cycles', () => {
+  const cpu = createCpu({ b: 0x01 });
+  assert.equal(rotateRegisterLeftWithCarry(cpu, 'B'), 2);
+});
+
+test('RL [HL] rotates memory value left through carry', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0b10110010, f: Flags.Carry });
+  rotateHLAddressLeftWithCarry(cpu);
+  assert.equal(cpu.readMemory(0xc000), 0b01100101);
+  assert.equal(cpu.registers.F & Flags.Carry, Flags.Carry);
+});
+
+test('RL [HL] sets Zero flag when result is zero', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0b00000000, f: 0x00 });
+  rotateHLAddressLeftWithCarry(cpu);
+  assert.equal(cpu.registers.F & Flags.Zero, Flags.Zero);
+});
+
+test('RL [HL] returns 4 cycles', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0x01 });
+  assert.equal(rotateHLAddressLeftWithCarry(cpu), 4);
+});
+
+test('RLA rotates accumulator left through carry', () => {
+  const cpu = createCpu({ a: 0b10110010, f: Flags.Carry });
+  rotateAccumulatorLeftWithCarry(cpu);
+  assert.equal(cpu.registers.A, 0b01100101);
+  assert.equal(cpu.registers.F & Flags.Carry, Flags.Carry);
+});
+
+test('RLA always clears Zero flag even when result is zero', () => {
+  const cpu = createCpu({ a: 0b00000000, f: 0x00 });
+  rotateAccumulatorLeftWithCarry(cpu);
+  assert.equal(cpu.registers.F & Flags.Zero, 0x00);
+});
+
+test('RLA clears N and H flags', () => {
+  const cpu = createCpu({ a: 0x01, f: Flags.Substraction | Flags.HalfCarry });
+  rotateAccumulatorLeftWithCarry(cpu);
+  assert.equal(cpu.registers.F & Flags.Substraction, 0x00);
+  assert.equal(cpu.registers.F & Flags.HalfCarry, 0x00);
+});
+
+test('RLA returns 1 cycle', () => {
+  const cpu = createCpu({ a: 0x01 });
+  assert.equal(rotateAccumulatorLeftWithCarry(cpu), 1);
+});
+
+test('RLC r8 rotates left, old bit 7 becomes both bit 0 and carry', () => {
+  const cpu = createCpu({ b: 0b10110010, f: 0x00 });
+  rotateRegisterLeft(cpu, 'B');
+  assert.equal(cpu.registers.B, 0b01100101);
+  assert.equal(cpu.registers.F & Flags.Carry, Flags.Carry);
+});
+
+test('RLC r8 carry-in is ignored, bit 0 comes from old bit 7', () => {
+  const cpu = createCpu({ b: 0b00000010, f: Flags.Carry });
+  rotateRegisterLeft(cpu, 'B');
+  assert.equal(cpu.registers.B, 0b00000100);
+  assert.equal(cpu.registers.F & Flags.Carry, 0x00);
+});
+
+test('RLC r8 sets Zero flag when result is zero', () => {
+  const cpu = createCpu({ b: 0b00000000, f: 0x00 });
+  rotateRegisterLeft(cpu, 'B');
+  assert.equal(cpu.registers.F & Flags.Zero, Flags.Zero);
+});
+
+test('RLC r8 clears N and H flags', () => {
+  const cpu = createCpu({ b: 0b00000001, f: Flags.Substraction | Flags.HalfCarry });
+  rotateRegisterLeft(cpu, 'B');
+  assert.equal(cpu.registers.F & Flags.Substraction, 0x00);
+  assert.equal(cpu.registers.F & Flags.HalfCarry, 0x00);
+});
+
+test('RLC r8 returns 2 cycles', () => {
+  const cpu = createCpu({ b: 0x01 });
+  assert.equal(rotateRegisterLeft(cpu, 'B'), 2);
+});
+
+test('RLC [HL] rotates memory value left, old bit 7 becomes bit 0 and carry', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0b10110010 });
+  rotateHLAddressLeft(cpu);
+  assert.equal(cpu.readMemory(0xc000), 0b01100101);
+  assert.equal(cpu.registers.F & Flags.Carry, Flags.Carry);
+});
+
+test('RLC [HL] sets Zero flag when result is zero', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0b00000000 });
+  rotateHLAddressLeft(cpu);
+  assert.equal(cpu.registers.F & Flags.Zero, Flags.Zero);
+});
+
+test('RLC [HL] returns 4 cycles', () => {
+  const cpu = createCpu({ h: 0xc0, l: 0x00, memoryValue: 0x01 });
+  assert.equal(rotateHLAddressLeft(cpu), 4);
+});
+
+test('RLCA rotates accumulator left, old bit 7 becomes bit 0 and carry', () => {
+  const cpu = createCpu({ a: 0b10110010, f: 0x00 });
+  rotateAccumulatorLeft(cpu);
+  assert.equal(cpu.registers.A, 0b01100101);
+  assert.equal(cpu.registers.F & Flags.Carry, Flags.Carry);
+});
+
+test('RLCA always clears Zero flag even when result is zero', () => {
+  const cpu = createCpu({ a: 0b00000000, f: 0x00 });
+  rotateAccumulatorLeft(cpu);
+  assert.equal(cpu.registers.F & Flags.Zero, 0x00);
+});
+
+test('RLCA returns 1 cycle', () => {
+  const cpu = createCpu({ a: 0x01 });
+  assert.equal(rotateAccumulatorLeft(cpu), 1);
 });
