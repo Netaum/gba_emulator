@@ -892,10 +892,32 @@ function rotateLeftThroughCarry(cpu, value) {
     return newValue;
 }
 
+function rotateRightThroughCarry(cpu, value) {
+    const carryIn = carry(cpu);
+    const newValue = ((carryIn << 7) | (value >> 1)) & 0xff;
+
+    cpu.registers.F = 0x00;
+    cpu.registers.F |= newValue === 0 ? Flags.Zero : 0x00;
+    cpu.registers.F |= (value & 0x01) !== 0 ? Flags.Carry : 0x00;
+
+    return newValue;
+}
+
 function rotateLeft(cpu, value) {
 
     const bitZero = value >> 7;
     const newValue = ((value << 1) | bitZero) & 0xff;
+    cpu.registers.F  = 0x00;
+    cpu.registers.F |= newValue === 0 ? Flags.Zero : 0x00;
+    cpu.registers.F |= bitZero !== 0 ? Flags.Carry : 0x00;
+
+    return newValue;
+}
+
+function rotateRight(cpu, value) {
+
+    const bitZero = value & 0b0000001;
+    const newValue = ((bitZero << 7) | (value >> 1)) & 0xff;
     cpu.registers.F  = 0x00;
     cpu.registers.F |= newValue === 0 ? Flags.Zero : 0x00;
     cpu.registers.F |= bitZero !== 0 ? Flags.Carry : 0x00;
@@ -978,3 +1000,349 @@ export const rotateAccumulatorLeft = (cpu) => {
 
     return cycles;
 }
+
+
+export const rotateRegisterRightWithCarry = (cpu, register) => {
+    const cycles = 2;
+
+    const value = cpu.registers[register] & 0xff;
+
+    const newValue = rotateRightThroughCarry(cpu, value);
+
+    cpu.registers[register] = newValue;
+
+    return cycles;
+}
+
+export const rotateHLAddressRightWithCarry = (cpu) => {
+    const cycles = 4;
+
+    const value = readHLMemoryAddress(cpu) & 0xff;
+
+    const newValue = rotateRightThroughCarry(cpu, value);
+
+    writeHLAddress(cpu, newValue);
+
+    return cycles;
+}
+
+export const rotateAccumulatorRightWithCarry = (cpu) => {
+    const cycles = 1;
+
+    const value = cpu.registers.A & 0xff;
+
+    const newValue = rotateRightThroughCarry(cpu, value);
+
+    cpu.registers.A = newValue;
+
+    cpu.registers.F &= ~Flags.Zero;
+
+    return cycles;
+}
+
+export const rotateRegisterRight = (cpu, register) => {
+    const cycles = 2;
+
+    const value = cpu.registers[register] & 0xff;
+
+    const newValue = rotateRight(cpu, value);
+
+    cpu.registers[register] = newValue;
+
+    return cycles;
+}
+
+export const rotateHLAddressRight = (cpu) => {
+    const cycles = 4;
+
+    const value = readHLMemoryAddress(cpu) & 0xff;
+
+    const newValue = rotateRight(cpu, value);
+
+    writeHLAddress(cpu, newValue);
+
+    return cycles;
+}
+
+export const rotateAccumulatorRight = (cpu) => {
+    const cycles = 1;
+
+    const value = cpu.registers.A & 0xff;
+
+    const newValue = rotateRight(cpu, value);
+
+    cpu.registers.A = newValue;
+
+    cpu.registers.F &= ~Flags.Zero;
+
+    return cycles;
+}
+
+export const restartVec = (cpu, vec) => {
+    const cycles = 4;
+
+    const pc = cpu.pc & 0xffff;
+    cpu.sp = (cpu.sp - 1) & 0xffff;
+    cpu.writeMemory(cpu.sp, (pc >> 8) & 0xff, false);
+    cpu.sp = (cpu.sp - 1) & 0xffff;
+    cpu.writeMemory(cpu.sp, pc & 0xff, false);
+
+    cpu.pc = vec & 0xffff;
+
+    return cycles;
+}
+
+const subtractFromAccumulator = (cpu, value, useCarry) => {
+    const carryIn = useCarry ? carry(cpu) : 0;
+    const a = cpu.registers.A & 0xff;
+    const operand = value & 0xff;
+    const diff = a - (operand + carryIn);
+
+    const halfCarry =  ((operand & 0x0f) + carryIn) > (a & 0x0f);
+    const carryOut = (operand + carryIn) > a;
+
+    cpu.registers.A = diff & 0xff;
+
+    cpu.registers.F = Flags.Substraction;
+    cpu.registers.F |= (cpu.registers.A === 0) ? Flags.Zero : 0x00;
+    cpu.registers.F |= halfCarry ? Flags.HalfCarry : 0x00;
+    cpu.registers.F |= carryOut ? Flags.Carry : 0x00;
+}
+
+export const subtractRegWithCarryFromAccumulator = (cpu, register) => {
+    const cycles = 1;
+
+    const value = cpu.registers[register];
+    subtractFromAccumulator(cpu, value, true);
+
+    return cycles;
+};
+
+export const subtractHLWithCarryFromAccumulator = (cpu) => {
+    const cycles = 2;
+
+    const value = readHLMemoryAddress(cpu);
+    subtractFromAccumulator(cpu, value, true);
+
+    return cycles;
+}
+
+export const subtractValueWithCarryFromAccumulator = (cpu, value) => {
+    const cycles = 2;
+
+    subtractFromAccumulator(cpu, value, true);
+
+    return cycles;
+}
+
+export const subtractRegFromAccumulator = (cpu, register) => {
+    const cycles = 1;
+
+    const value = cpu.registers[register];
+    subtractFromAccumulator(cpu, value, false);
+
+    return cycles;
+};
+
+export const subtractHLFromAccumulator = (cpu) => {
+    const cycles = 2;
+
+    const value = readHLMemoryAddress(cpu);
+    subtractFromAccumulator(cpu, value, false);
+
+    return cycles;
+}
+
+export const subtractValueFromAccumulator = (cpu, value) => {
+    const cycles = 2;
+
+    subtractFromAccumulator(cpu, value, false);
+
+    return cycles;
+}
+
+export const setCarryFlag = (cpu) => {
+    const cycles = 1;
+
+    let flags = cpu.registers.F & Flags.Zero;
+    flags |= Flags.Carry;
+
+
+    cpu.registers.F = flags;
+
+    return cycles;
+}
+
+const swap = (cpu, value) => {
+    const hi = value & 0xf0;
+    const low = value & 0xf;
+
+    const newValue = (low << 4) | (hi >> 4);
+
+    cpu.registers.F = 0x00;
+    cpu.registers.F |= newValue == 0 ? Flags.Zero : 0x00;
+
+    return newValue;
+}
+
+export const swapRegister = (cpu, register) => {
+    const cycles = 2;
+
+    const reg = cpu.registers[register];
+
+    cpu.registers[register] = swap(cpu, reg);
+
+    return cycles;
+}
+
+export const swapHL = (cpu) => {
+    const cycles = 4;
+
+    const hl = readHLMemoryAddress(cpu);
+    const newValue = swap(cpu, hl);
+
+    writeHLAddress(cpu, newValue);
+
+    return cycles;
+}
+
+const xorWithAccumulator = (cpu, value) => {
+    const result = cpu.registers.A ^ value;
+
+    cpu.registers.F = result === 0 ? Flags.Zero : 0x00;
+
+    cpu.registers.A = result & 0xff;
+
+}
+
+export const xorRegisterWithAccumulator = (cpu, register) => {
+    const cycles = 1;
+
+    xorWithAccumulator(cpu, cpu.registers[register]);
+    
+    return cycles;
+}
+
+export const xorHLWithAccumulator = (cpu) => {
+    const cycles = 2;
+
+    xorWithAccumulator(cpu, readHLMemoryAddress(cpu));
+    
+    return cycles;
+}
+
+export const xorValueWithAccumulator = (cpu, value) => {
+    const cycles = 2;
+
+    xorWithAccumulator(cpu, value);
+    
+    return cycles;
+}
+
+
+export const setBitInReg = (cpu, register, bit) => {
+    const cycles = 2;
+
+    const value = cpu.registers[register] & 0xff;
+    const bitMask = (1 << bit);
+    const newValue = value | bitMask;
+
+    cpu.registers[register] = newValue & 0xff;
+
+    return cycles;
+}
+
+export const setBitInHLMemoryAddress = (cpu, bit) => {
+    const cycles = 4;
+
+    const value = readHLMemoryAddress(cpu) & 0xff;
+    const bitMask = (1 << bit);
+    const newValue = value | bitMask;
+
+    writeHLAddress(cpu, newValue & 0xff);
+
+    return cycles;
+}
+
+const leftShiftWithCarry = (cpu, value) => {
+
+    const newValue = (value << 1) & 0xff;
+    cpu.registers.F = 0x00;
+    cpu.registers.F |= newValue === 0 ? Flags.Zero : 0x00;
+    cpu.registers.F |= (value & 0x80) !== 0 ? Flags.Carry : 0x00;
+
+    return newValue;
+}
+
+export const leftShiftRegister = (cpu, register) => {
+    const cycles = 2;
+
+    const value = cpu.registers[register];
+    cpu.registers[register] = leftShiftWithCarry(cpu, value);
+
+    return cycles;
+}
+
+export const leftShiftHL = (cpu) => {
+    const cycles = 4;
+
+    const value = readHLMemoryAddress(cpu);
+    const newValue = leftShiftWithCarry(cpu, value) & 0xff;
+
+    writeHLAddress(cpu, newValue);
+
+    return cycles;
+}
+
+const rightShiftWithCarry = (cpu, value, preserveBit) => {
+
+    const bit7 = preserveBit ? (value & 0x80) : 0x00;
+    const newValue = (bit7 | (value >> 1)) & 0xff;
+    cpu.registers.F = 0x00;
+    cpu.registers.F |= newValue === 0 ? Flags.Zero : 0x00;
+    cpu.registers.F |= (value & 0x01) !== 0 ? Flags.Carry : 0x00;
+
+    return newValue;
+}
+
+export const rightShiftRegister = (cpu, register) => {
+    const cycles = 2;
+
+    const value = cpu.registers[register];
+    cpu.registers[register] = rightShiftWithCarry(cpu, value, true);
+
+    return cycles;
+}
+
+export const rightShiftHL = (cpu) => {
+    const cycles = 4;
+
+    const value = readHLMemoryAddress(cpu);
+    const newValue = rightShiftWithCarry(cpu, value, true) & 0xff;
+
+    writeHLAddress(cpu, newValue);
+
+    return cycles;
+}
+
+
+export const rightShiftLogicallyRegister = (cpu, register) => {
+    const cycles = 2;
+
+    const value = cpu.registers[register];
+    cpu.registers[register] = rightShiftWithCarry(cpu, value, false);
+
+    return cycles;
+}
+
+export const rightShiftLogicallyHL = (cpu) => {
+    const cycles = 4;
+
+    const value = readHLMemoryAddress(cpu);
+    const newValue = rightShiftWithCarry(cpu, value, false) & 0xff;
+
+    writeHLAddress(cpu, newValue);
+
+    return cycles;
+}
+
