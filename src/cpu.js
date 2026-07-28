@@ -43,7 +43,6 @@ export class CPU {
     this.mode = 'idle';
     this.memory = new Uint8Array(0x10000);
     this.halted = false;
-
   }
 
   readMemory(address, isIO = false) {
@@ -52,6 +51,14 @@ export class CPU {
 
   writeMemory(address, value, isIO = false) {
     this.memory[address & 0xffff] = value & 0xff;
+  }
+
+  readMemoryFromProgramCounter() {
+    return this.readMemory(this.pc);
+  }
+
+  incProgramCounter(value = 2) {
+    this.pc += value & 0xff;
   }
 
   step() {

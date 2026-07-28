@@ -10,31 +10,31 @@ export const condNZ = (cpu) => (cpu.registers.F & Flags.Zero) === 0;
 export const condC = (cpu) => (cpu.registers.F & Flags.Carry) !== 0;
 export const condNC = (cpu) => (cpu.registers.F & Flags.Carry) === 0;
 
-export const readHLMemoryAddress = (cpu) => {
-    const address = readHLAddress(cpu);
+export const readMemoryFromHLAddress = (cpu) => {
+    const address = readValueFromHLRegisters(cpu);
     return cpu.readMemory(address, false);
 }
 
-export const readHLAddress = (cpu) => {
+export const readValueFromHLRegisters = (cpu) => {
     return ((cpu.registers.H << 8) | cpu.registers.L) & 0xffff;
 }
 
-export const writeHLAddress = (cpu, value) => {
-    const address = readHLAddress(cpu);
+export const writeMemoryFromHLAddress = (cpu, value) => {
+    const address = readValueFromHLRegisters(cpu);
     cpu.writeMemory(address, value, false);
 }
 
-export const writeHL = (cpu, value) => {
+export const writeValueIntoHLRegisters = (cpu, value) => {
     cpu.registers.H = (value >> 8) & 0xff;
     cpu.registers.L = value & 0xff;
 }
 
-export const readR16Address = (cpu, registerHigh, registerLow) => {
+export const readFromR16Address = (cpu, registerHigh, registerLow) => {
     const address = ((cpu.registers[registerHigh] << 8) | cpu.registers[registerLow]) & 0xffff;
     return cpu.readMemory(address, false) & 0xffff;
 }
 
-export const writeR16Address = (cpu, registerHigh, registerLow, value) => {
+export const writeToR16Address = (cpu, registerHigh, registerLow, value) => {
     const address = ((cpu.registers[registerHigh] << 8) | cpu.registers[registerLow]) & 0xffff;
     cpu.writeMemory(address, value & 0xffff, false);
 }
@@ -42,37 +42,6 @@ export const writeR16Address = (cpu, registerHigh, registerLow, value) => {
 export const applySignExtension = (value) => {
     return (value << 24) >> 24;
 }
-
-/*
-List of abbreviations used in this document.
-
-r8
-Any of the 8-bit registers (A, B, C, D, E, H, L).
-r16
-Any of the general-purpose 16-bit registers (BC, DE, HL).
-n8
-8-bit integer constant.
-n16
-16-bit integer constant.
-e8
-8-bit offset (-128 to 127).
-u3
-3-bit unsigned integer constant (0 to 7).
-cc
-Condition codes:
-Z
-Execute if Z is set.
-NZ
-Execute if Z is not set.
-C
-Execute if C is set.
-NC
-Execute if C is not set.
-! cc
-Negates a condition code.
-vec
-One of the RST vectors (0x00, 0x08, 0x10, 0x18, 0x20, 0x28, 0x30, and 0x38).
-*/
 
 const carry = (cpu) => {
     return (cpu.registers.F & Flags.Carry) !== 0 ? 1 : 0;
@@ -105,6 +74,66 @@ const addToAccumulator = (cpu, value, useCarry) => {
     cpu.registers.F |= (cpu.registers.A === 0) ? Flags.Zero : 0x00;
     cpu.registers.F |= halfCarry ? Flags.HalfCarry : 0x00;
     cpu.registers.F |= carryOut ? Flags.Carry : 0x00;
+}
+
+const NOP = {
+    id: 0x00,
+    mnemonic: 'NOP',
+    length: 1,
+    cycles: 1,
+    execute: function(cpu) {
+        return this.cycles;
+    }
+};
+
+const loadRegistersWithValue = (cpu, destRegisterHigh, destRegisterLow, value) => {
+    cpu.registers[destRegisterHigh] = (value >> 8) & 0xff;
+    cpu.registers[destRegisterLow] = value & 0xff;
+}
+
+const formatU16Value = (hi, lo) => {
+    return ((hi << 8) | lo) & 0xffff;
+}
+
+const LD_BC_u16 = {
+    id: 0x01,
+    mnemonic: 'LD BC, u16',
+    length: 3,
+    cycles: 3,
+    execute: function(cpu) {
+        const lo = cpu.readMemoryFromProgramCounter();
+        cpu.incProgramCounter();
+        const hi = cpu.readMemoryFromProgramCounter();
+        cpu.incProgramCounter();
+        const value = formatU16Value(hi, lo);
+        loadRegistersWithValue(cpu, 'B', 'C', value);
+        return this.cycles;
+    }
+}
+
+const loadMemoryR16WithAccumulator = (cpu, registerHigh, registerLow) => {
+    const cycles = 2;
+
+    const address = ((cpu.registers[registerHigh] << 8) | cpu.registers[registerLow]) & 0xffff;
+    const value = cpu.registers.A & 0xff;
+    cpu.writeMemory(address, value, false);
+    return cycles;
+}
+
+const LD_BC_Accumulator = {
+    id: 0x01,
+    mnemonic: 'LD BC, A',
+    length: 1,
+    cycles: 2,
+    execute: function(cpu) {
+        const lo = cpu.readMemoryFromProgramCounter();
+        cpu.incProgramCounter();
+        const hi = cpu.readMemoryFromProgramCounter();
+        cpu.incProgramCounter();
+        const value = formatU16Value(hi, lo);
+        loadRegistersWithValue(cpu, 'B', 'C', value);
+        return this.cycles;
+    }
 }
 
 export const addRegWithCarryToAccumulator = (cpu, register) => {
@@ -335,7 +364,7 @@ export const compareRegistryFromAccumulator = (cpu, register) => {
 export const compareHLAddressFromAccumulator = (cpu) => {
     const cycles = 2;
 
-    const value = readHLMemoryAddress(cpu) & 0xff;
+    const value = readMemoryFromHLAddress(cpu) & 0xff;
     compareWithAccumulator(cpu, value);
 
     return cycles;
@@ -432,10 +461,10 @@ export const decrementRegistry = (cpu, register) => {
 export const decrementHLAddress = (cpu) => {
     const cycles = 3;
 
-    const hl = readHLMemoryAddress(cpu) & 0xff;
+    const hl = readMemoryFromHLAddress(cpu) & 0xff;
     const newValue = (hl - 1) & 0xff;
     decrementFlags(cpu, hl, newValue);
-    writeHLAddress(cpu, newValue);
+    writeMemoryFromHLAddress(cpu, newValue);
     return cycles;
 }
 
@@ -488,11 +517,11 @@ export const incrementRegistry = (cpu, register) => {
 
 export const incrementHLAddress = (cpu) => {
     const cycles = 3;
-    const hl = readHLMemoryAddress(cpu) & 0xff;
+    const hl = readMemoryFromHLAddress(cpu) & 0xff;
 
     const newValue = (hl + 1) & 0xff;
     incrementFlags(cpu, hl, newValue);
-    writeHLAddress(cpu, newValue);
+    writeMemoryFromHLAddress(cpu, newValue);
     return cycles;
 }
 
@@ -533,7 +562,7 @@ export const jumpToAddressConditional = (cpu, address, condition) => {
 export const jumpToHLAddress = (cpu) => {
     const cycles = 1;
 
-    const address = readHLAddress(cpu);
+    const address = readValueFromHLRegisters(cpu);
     cpu.pc = address;
 
     return cycles;
@@ -573,20 +602,13 @@ export const loadRegisterWithValue = (cpu, destRegister, value) => {
     return cycles;
 }
 
-export const loadRegister16WithValue = (cpu, destRegisterHigh, destRegisterLow, value) => {
-    const cycles = 3;
 
-    cpu.registers[destRegisterHigh] = (value >> 8) & 0xff;
-    cpu.registers[destRegisterLow] = value & 0xff;
-
-    return cycles;
-}
 
 export const loadHLAddressWithRegister = (cpu, srcRegister) => {
     const cycles = 2;
 
     const value = cpu.registers[srcRegister] & 0xff;
-    writeHLAddress(cpu, value);
+    writeMemoryFromHLAddress(cpu, value);
 
     return cycles;
 }
@@ -594,7 +616,7 @@ export const loadHLAddressWithRegister = (cpu, srcRegister) => {
 export const loadHLAddressWithValue = (cpu, value) => {
     const cycles = 3;
 
-    writeHLAddress(cpu, value & 0xff);
+    writeMemoryFromHLAddress(cpu, value & 0xff);
 
     return cycles;
 }
@@ -602,20 +624,12 @@ export const loadHLAddressWithValue = (cpu, value) => {
 export const loadRegisterWithHLAddress = (cpu, destRegister) => {
     const cycles = 2;
 
-    const value = readHLMemoryAddress(cpu) & 0xff;
+    const value = readMemoryFromHLAddress(cpu) & 0xff;
     cpu.registers[destRegister] = value;
 
     return cycles;
 }
 
-export const loadMemoryR16WithAccumulator = (cpu, registerHigh, registerLow) => {
-    const cycles = 2;
-
-    const address = ((cpu.registers[registerHigh] << 8) | cpu.registers[registerLow]) & 0xffff;
-    const value = cpu.registers.A & 0xff;
-    cpu.writeMemory(address, value, false);
-    return cycles;
-}
 
 export const loadMemoryAddressWithAccumulator = (cpu, address) => {
     const cycles = 4;
@@ -644,7 +658,7 @@ export const loadMemoryRegisterCWithAccumulator = (cpu) => {
 export const loadMemoryHLWithAccumulatorInc = (cpu) => {
     const cycles = 2;
 
-    const address = readHLAddress(cpu);
+    const address = readValueFromHLRegisters(cpu);
     cpu.writeMemory(address, cpu.registers.A & 0xff, false);
 
     const hl = (address + 1) & 0xffff;
@@ -657,7 +671,7 @@ export const loadMemoryHLWithAccumulatorInc = (cpu) => {
 export const loadMemoryHLWithAccumulatorDec = (cpu) => {
     const cycles = 2;
 
-    const address = readHLAddress(cpu);
+    const address = readValueFromHLRegisters(cpu);
     cpu.writeMemory(address, cpu.registers.A & 0xff, false);
 
     const hl = (address - 1) & 0xffff;
@@ -670,7 +684,7 @@ export const loadMemoryHLWithAccumulatorDec = (cpu) => {
 export const loadAccumulatorHLAddressInc = (cpu) => {
     const cycles = 2;
 
-    const address = readHLAddress(cpu);
+    const address = readValueFromHLRegisters(cpu);
     const value = cpu.readMemory(address, false) & 0xff;
     cpu.registers.A = value;
 
@@ -684,7 +698,7 @@ export const loadAccumulatorHLAddressInc = (cpu) => {
 export const loadAccumulatorHLAddressDec = (cpu) => {
     const cycles = 2;
 
-    const address = readHLAddress(cpu);
+    const address = readValueFromHLRegisters(cpu);
     const value = cpu.readMemory(address, false) & 0xff;
     cpu.registers.A = value;
 
@@ -727,7 +741,7 @@ export const loadHLWithSP28 = (cpu, value) => {
 
     const newValue = (cpu.sp + e8) & 0xffff;
 
-    writeHL(cpu, newValue);
+    writeValueIntoHLRegisters(cpu, newValue);
 
     cpu.registers.F = 0x00;
     cpu.registers.F |= halfCarry ? Flags.HalfCarry : 0x00;
@@ -766,7 +780,7 @@ export const orRegWithAccumulator = (cpu, register) => {
 export const orHLWithAccumulator = (cpu) => {
     const cycles = 2;
 
-    const hl = readHLMemoryAddress(cpu) & 0xff;
+    const hl = readMemoryFromHLAddress(cpu) & 0xff;
     orWithAccumulator(cpu, hl);
 
     return cycles;
@@ -845,11 +859,11 @@ export const resetBitInReg = (cpu, register, bit) => {
 export const resetBitInHLMemoryAddress = (cpu, bit) => {
     const cycles = 4;
 
-    const value = readHLMemoryAddress(cpu) & 0xff;
+    const value = readMemoryFromHLAddress(cpu) & 0xff;
     const bitMask = ~(1 << bit);
     const newValue = value & bitMask;
 
-    writeHLAddress(cpu, newValue & 0xff);
+    writeMemoryFromHLAddress(cpu, newValue & 0xff);
 
     return cycles;
 }
@@ -940,11 +954,11 @@ export const rotateRegisterLeftWithCarry = (cpu, register) => {
 export const rotateHLAddressLeftWithCarry = (cpu) => {
     const cycles = 4;
 
-    const value = readHLMemoryAddress(cpu) & 0xff;
+    const value = readMemoryFromHLAddress(cpu) & 0xff;
 
     const newValue = rotateLeftThroughCarry(cpu, value);
 
-    writeHLAddress(cpu, newValue);
+    writeMemoryFromHLAddress(cpu, newValue);
 
     return cycles;
 }
@@ -978,11 +992,11 @@ export const rotateRegisterLeft = (cpu, register) => {
 export const rotateHLAddressLeft = (cpu) => {
     const cycles = 4;
 
-    const value = readHLMemoryAddress(cpu) & 0xff;
+    const value = readMemoryFromHLAddress(cpu) & 0xff;
 
     const newValue = rotateLeft(cpu, value);
 
-    writeHLAddress(cpu, newValue);
+    writeMemoryFromHLAddress(cpu, newValue);
 
     return cycles;
 }
@@ -1017,11 +1031,11 @@ export const rotateRegisterRightWithCarry = (cpu, register) => {
 export const rotateHLAddressRightWithCarry = (cpu) => {
     const cycles = 4;
 
-    const value = readHLMemoryAddress(cpu) & 0xff;
+    const value = readMemoryFromHLAddress(cpu) & 0xff;
 
     const newValue = rotateRightThroughCarry(cpu, value);
 
-    writeHLAddress(cpu, newValue);
+    writeMemoryFromHLAddress(cpu, newValue);
 
     return cycles;
 }
@@ -1055,11 +1069,11 @@ export const rotateRegisterRight = (cpu, register) => {
 export const rotateHLAddressRight = (cpu) => {
     const cycles = 4;
 
-    const value = readHLMemoryAddress(cpu) & 0xff;
+    const value = readMemoryFromHLAddress(cpu) & 0xff;
 
     const newValue = rotateRight(cpu, value);
 
-    writeHLAddress(cpu, newValue);
+    writeMemoryFromHLAddress(cpu, newValue);
 
     return cycles;
 }
@@ -1121,7 +1135,7 @@ export const subtractRegWithCarryFromAccumulator = (cpu, register) => {
 export const subtractHLWithCarryFromAccumulator = (cpu) => {
     const cycles = 2;
 
-    const value = readHLMemoryAddress(cpu);
+    const value = readMemoryFromHLAddress(cpu);
     subtractFromAccumulator(cpu, value, true);
 
     return cycles;
@@ -1147,7 +1161,7 @@ export const subtractRegFromAccumulator = (cpu, register) => {
 export const subtractHLFromAccumulator = (cpu) => {
     const cycles = 2;
 
-    const value = readHLMemoryAddress(cpu);
+    const value = readMemoryFromHLAddress(cpu);
     subtractFromAccumulator(cpu, value, false);
 
     return cycles;
@@ -1198,10 +1212,10 @@ export const swapRegister = (cpu, register) => {
 export const swapHL = (cpu) => {
     const cycles = 4;
 
-    const hl = readHLMemoryAddress(cpu);
+    const hl = readMemoryFromHLAddress(cpu);
     const newValue = swap(cpu, hl);
 
-    writeHLAddress(cpu, newValue);
+    writeMemoryFromHLAddress(cpu, newValue);
 
     return cycles;
 }
@@ -1226,7 +1240,7 @@ export const xorRegisterWithAccumulator = (cpu, register) => {
 export const xorHLWithAccumulator = (cpu) => {
     const cycles = 2;
 
-    xorWithAccumulator(cpu, readHLMemoryAddress(cpu));
+    xorWithAccumulator(cpu, readMemoryFromHLAddress(cpu));
     
     return cycles;
 }
@@ -1255,11 +1269,11 @@ export const setBitInReg = (cpu, register, bit) => {
 export const setBitInHLMemoryAddress = (cpu, bit) => {
     const cycles = 4;
 
-    const value = readHLMemoryAddress(cpu) & 0xff;
+    const value = readMemoryFromHLAddress(cpu) & 0xff;
     const bitMask = (1 << bit);
     const newValue = value | bitMask;
 
-    writeHLAddress(cpu, newValue & 0xff);
+    writeMemoryFromHLAddress(cpu, newValue & 0xff);
 
     return cycles;
 }
@@ -1286,10 +1300,10 @@ export const leftShiftRegister = (cpu, register) => {
 export const leftShiftHL = (cpu) => {
     const cycles = 4;
 
-    const value = readHLMemoryAddress(cpu);
+    const value = readMemoryFromHLAddress(cpu);
     const newValue = leftShiftWithCarry(cpu, value) & 0xff;
 
-    writeHLAddress(cpu, newValue);
+    writeMemoryFromHLAddress(cpu, newValue);
 
     return cycles;
 }
@@ -1317,10 +1331,10 @@ export const rightShiftRegister = (cpu, register) => {
 export const rightShiftHL = (cpu) => {
     const cycles = 4;
 
-    const value = readHLMemoryAddress(cpu);
+    const value = readMemoryFromHLAddress(cpu);
     const newValue = rightShiftWithCarry(cpu, value, true) & 0xff;
 
-    writeHLAddress(cpu, newValue);
+    writeMemoryFromHLAddress(cpu, newValue);
 
     return cycles;
 }
@@ -1338,10 +1352,10 @@ export const rightShiftLogicallyRegister = (cpu, register) => {
 export const rightShiftLogicallyHL = (cpu) => {
     const cycles = 4;
 
-    const value = readHLMemoryAddress(cpu);
+    const value = readMemoryFromHLAddress(cpu);
     const newValue = rightShiftWithCarry(cpu, value, false) & 0xff;
 
-    writeHLAddress(cpu, newValue);
+    writeMemoryFromHLAddress(cpu, newValue);
 
     return cycles;
 }
