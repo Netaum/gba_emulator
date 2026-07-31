@@ -1,9 +1,34 @@
 const Flags = Object.freeze({
-    Zero:         0x80,
+    Zero: 0x80,
     Substraction: 0x40,
-    HalfCarry:    0x20,
-    Carry:        0x10,
+    HalfCarry: 0x20,
+    Carry: 0x10,
 });
+
+function carryFlag(cpu) {
+    return (cpu.registers.F & Flags.Carry) !== 0 ? 1 : 0;
+}
+
+function halfCarryFlag(cpu) {
+    return (cpu.registers.F & Flags.HalfCarry) !== 0 ? 1 : 0;
+}
+
+function zeroFlag(cpu) {
+    return (cpu.registers.F & Flags.Zero) !== 0 ? 1 : 0;
+}
+
+function substractionFlag(cpu) {
+    return (cpu.registers.F & Flags.Substraction) !== 0 ? 1 : 0;
+}
+
+function signedValue(raw) {
+    return raw > 0x7f ? raw - 0x100 : raw;
+}
+
+function condZ(cpu) { return (cpu.registers.F & Flags.Zero) !== 0; }
+function condNZ(cpu) { return (cpu.registers.F & Flags.Zero) === 0; }
+function condC(cpu) { return (cpu.registers.F & Flags.Carry) !== 0; }
+function condNC(cpu) { return (cpu.registers.F & Flags.Carry) === 0; }
 
 // Pattern: no operands
 export const NOP = {
@@ -24,7 +49,7 @@ function u16ToHiLo(u16) {
         Hi: (u16 >> 8) & 0xff,
         Lo: u16 & 0xff
     };
-    
+
     return values;
 }
 
@@ -182,7 +207,7 @@ export const INC_SP = {
 // #region INCREMENT REGISTER 8   
 
 function incrementRegister(cpu, register) {
-    
+
     const oldValue = cpu.registers[register] & 0xff;
     const newValue = (oldValue + 1) & 0xff;
 
@@ -436,21 +461,18 @@ export const LD_A_n8 = {
 // #endregion
 
 export const LD_iHL_u8 = {
- mnemonic: 'LD [HL], u8',
- index: 0x36,
- execute(cpu) {
-    const address = hiLoToU16(cpu.registers.H, cpu.registers.L);
-    const value = cpu.readMemoryFromProgramCounter();
-    cpu.incProgramCounter();
-    cpu.writeMemory(address, value & 0xff);
-    return 3;
- }
+    mnemonic: 'LD [HL], u8',
+    index: 0x36,
+    execute(cpu) {
+        const address = hiLoToU16(cpu.registers.H, cpu.registers.L);
+        const value = cpu.readMemoryFromProgramCounter();
+        cpu.incProgramCounter();
+        cpu.writeMemory(address, value & 0xff);
+        return 3;
+    }
 }
 
-function carryBit(cpu) {
-    return (cpu.registers.F & Flags.Carry) !== 0 ? 1 : 0;
-}
-
+// #region ROTATE LEFT   
 function rotateLeft(value) {
     const bit7 = value >> 7;
     const newValue = ((value << 1) | bit7) & 0xff;
@@ -479,7 +501,7 @@ export const RLA = {
     execute(cpu) {
 
         const value = cpu.registers.A;
-        const cbit = carryBit(cpu);
+        const cbit = carryFlag(cpu);
 
         const newValue = ((value << 1) | cbit) & 0xff;
 
@@ -487,6 +509,135 @@ export const RLA = {
 
         cpu.registers.F = 0x00;
         cpu.registers.F |= (value & 0x80) !== 0 ? Flags.Carry : 0x00;
+
+        return 1;
+    }
+}
+
+// #endregion
+
+// #region JUMP CONDITIONAL
+
+function jump(cpu, cycles) {
+    
+    const address = cpu.readMemoryFromProgramCounter() & 0xff;
+    cpu.incProgramCounter();
+    const signedOffset = signedValue(address);
+    cpu.pc = (cpu.pc + signedOffset) & 0xffff;
+    return cycles;
+
+}
+
+function jumpConditional(cpu, cyclesNot, cyclesYes, condFn) {
+    
+    const address = cpu.readMemoryFromProgramCounter() & 0xff;
+    cpu.incProgramCounter();
+
+    if (!condFn(cpu)) return cyclesNot;
+
+    const signedOffset = signedValue(address);
+    cpu.pc = (cpu.pc + signedOffset) & 0xffff;
+    return cyclesYes;
+}
+
+export const JR_NZ_i8 = {
+    mnemonic: 'JR NZ, i8',
+    index: 0x20,
+    execute(cpu) {
+        return jumpConditional(cpu, 2, 3, condNZ);
+    }
+}
+
+export const JR_NC_i8 = {
+    mnemonic: 'JR NC, i8',
+    index: 0x30,
+    execute(cpu) {
+        return jumpConditional(cpu, 2, 3, condNC);
+    }
+}
+
+export const JR_i8 = {
+    mnemonic: 'JR i8',
+    index: 0x18,
+    execute(cpu) {
+        return jump(cpu, 3);
+    }
+}
+
+export const JR_Z_i8 = {
+    mnemonic: 'JR Z, i8',
+    index: 0x28,
+    execute(cpu) {
+        return jumpConditional(cpu, 2, 3, condZ);
+    }
+}
+
+export const JR_C_i8 = {
+    mnemonic: 'JR C, i8',
+    index: 0x38,
+    execute(cpu) {
+        return jumpConditional(cpu, 2, 3, condC);
+    }
+}
+
+// #endregion
+
+export const SCF = {
+    mnemonic: 'SCF',
+    index: 0x37,
+    execute(cpu) {
+
+        let flags = cpu.registers.F & Flags.Zero;
+        flags |= Flags.Carry;
+
+        cpu.registers.F = flags;
+        return 1;
+    }
+}
+
+export const DAA = {
+    mnemonic: 'DAA',
+    index: 0x27,
+    execute(cpu) {
+
+        const a = cpu.registers.A & 0xff;
+
+        let correction = 0;
+        let cf = carryFlag(cpu) !== 0;
+
+        if (!substractionFlag(cpu)) {
+            if (((a & 0x0f) > 0x09) || halfCarryFlag(cpu)) {
+                correction |= 0x06;
+            }
+
+            if (a > 0x99 || carryFlag(cpu)) {
+                correction |= 0x60;
+                cf = true;
+            }
+            cpu.registers.A = (a + correction) & 0xff;
+
+        }
+        else {
+            if (halfCarryFlag(cpu)) {
+                correction |= 0x06;
+            }
+
+            if (carryFlag(cpu)) {
+                correction |= 0x60;
+            }
+
+            cpu.registers.A = (a - correction) & 0xff;
+
+        }
+
+
+        cpu.registers.F &= ~Flags.HalfCarry;
+        cpu.registers.F &= ~Flags.Zero;
+
+        cpu.registers.F |= cpu.registers.A === 0 ? Flags.Zero : 0x00;
+        cpu.registers.F = cf ?
+            cpu.registers.F | Flags.Carry :
+            cpu.registers.F & ~Flags.Carry;
 
         return 1;
     }
@@ -502,7 +653,7 @@ export const RRCA = {
         const newValue = ((bitZero << 7) | (value >> 1)) & 0xff;
 
         cpu.registers.A = newValue;
-        cpu.registers.F  = 0x00;
+        cpu.registers.F = 0x00;
         cpu.registers.F |= bitZero !== 0 ? Flags.Carry : 0x00;
 
         return 1;
@@ -521,23 +672,72 @@ export const LD_iu16_SP = {
 
         const address = hiLoToU16(hi, lo);
         cpu.writeMemory(address, cpu.sp & 0xff);
-        cpu.writeMemory((address+1) & 0xffff, (cpu.sp >> 8) & 0xff);
+        cpu.writeMemory((address + 1) & 0xffff, (cpu.sp >> 8) & 0xff);
 
         return 5;
     }
+}
+
+// #region ADD
+
+function addRegister16ToRegister16(cpu, regHiFrom, regLoFrom, regHiTo, regLoTo) {
+    
+    const from = hiLoToU16(cpu.registers[regHiFrom], cpu.registers[regLoFrom]);
+    const to = hiLoToU16(cpu.registers[regHiTo], cpu.registers[regLoTo]);
+
+    const sum = (from + to);
+
+    const halfCarry = ((to & 0x0fff) + (from & 0x0fff)) > 0x0fff;
+    const carryOut = sum > 0xffff;
+
+    const hilo = u16ToHiLo(sum);
+
+    cpu.registers[regHiTo] = hilo.Hi;
+    cpu.registers[regLoTo] = hilo.Lo;
+
+    cpu.registers.F = cpu.registers.F & Flags.Zero;
+    cpu.registers.F |= halfCarry ? Flags.HalfCarry : 0x00;
+    cpu.registers.F |= carryOut ? Flags.Carry : 0x00;
+
+    return 2;
 }
 
 export const ADD_HL_BC = {
     mnemonic: 'ADD HL, BC',
     index: 0x09,
     execute(cpu) {
+        return addRegister16ToRegister16(cpu, 'B', 'C', 'H', 'L');
+    }
+}
 
-        const bc = hiLoToU16(cpu.registers.B, cpu.registers.C);
-        const hl = hiLoToU16(cpu.registers.H, cpu.registers.L);
+export const ADD_HL_DE = {
+    mnemonic: 'ADD HL, DE',
+    index: 0x19,
+    execute(cpu) {
+        return addRegister16ToRegister16(cpu, 'D', 'E', 'H', 'L');
+    }
+}
 
-        const sum = (bc + hl);
+export const ADD_HL_HL = {
+    mnemonic: 'ADD HL, HL',
+    index: 0x29,
+    execute(cpu) {
+        return addRegister16ToRegister16(cpu, 'H', 'L', 'H', 'L');
+    }
+}
 
-        const halfCarry = ((hl & 0x0fff) + (bc & 0x0fff)) > 0x0fff;
+export const ADD_HL_SP = {
+    mnemonic: 'ADD HL, SP',
+    index: 0x39,
+    execute(cpu) {
+
+        const from = cpu.sp & 0xffff;
+
+        const to = hiLoToU16(cpu.registers.H, cpu.registers.L);
+
+        const sum = (from + to);
+
+        const halfCarry = ((to & 0x0fff) + (from & 0x0fff)) > 0x0fff;
         const carryOut = sum > 0xffff;
 
         const hilo = u16ToHiLo(sum);
@@ -553,6 +753,9 @@ export const ADD_HL_BC = {
     }
 }
 
+// #endregion
+
+
 export const LD_A_iBC = {
     mnemonic: 'LD A, [BC]',
     index: 0x0A,
@@ -562,7 +765,7 @@ export const LD_A_iBC = {
         const value = cpu.readMemory(bc);
 
         cpu.registers.A = value & 0xff;
-        
+
         return 2;
     }
 }
@@ -588,7 +791,7 @@ export const STOP = {
     index: 0x10,
     execute(cpu) {
         cpu.mode = 'low_power';
-        cpu.readMemoryFromProgramCounter(); 
+        cpu.readMemoryFromProgramCounter();
         cpu.incProgramCounter();
         return 0;
     }
