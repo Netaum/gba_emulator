@@ -57,8 +57,8 @@ export class CPU {
     return this.readMemory(this.pc);
   }
 
-  incProgramCounter(value = 2) {
-    this.pc += value & 0xff;
+  incProgramCounter(value = 1) {
+    this.pc = (this.pc + value) & 0xffff;
   }
 
   step() {

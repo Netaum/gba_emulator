@@ -1050,7 +1050,7 @@ export const STOP = {
         cpu.mode = 'low_power';
         cpu.readMemoryFromProgramCounter();
         cpu.incProgramCounter();
-        return 0;
+        return 1;
     }
 }
 
@@ -1059,7 +1059,7 @@ export const HALT = {
     index: 0x76,
     execute(cpu) {
         cpu.halted = true;
-        return 4;
+        return 1;
     }
 }
 
@@ -2744,7 +2744,7 @@ export const EI = {
 
 export const ADD_A_n8 = {
     mnemonic: 'ADD A, u8',
-    index: 0xc8,
+    index: 0xc6,
     execute(cpu) {
         const value = cpu.readMemoryFromProgramCounter() & 0xff;
         cpu.incProgramCounter();
@@ -2757,7 +2757,7 @@ export const ADD_A_n8 = {
 
 export const SUB_A_n8 = {
     mnemonic: 'SUB A, u8',
-    index: 0xd8,
+    index: 0xd6,
     execute(cpu) {
         const value = cpu.readMemoryFromProgramCounter() & 0xff;
         cpu.incProgramCounter();
@@ -2770,7 +2770,7 @@ export const SUB_A_n8 = {
 
 export const AND_A_n8 = {
     mnemonic: 'AND A, u8',
-    index: 0xe8,
+    index: 0xe6,
     execute(cpu) {
         const value = cpu.readMemoryFromProgramCounter() & 0xff;
         cpu.incProgramCounter();
@@ -2783,7 +2783,7 @@ export const AND_A_n8 = {
 
 export const OR_A_n8 = {
     mnemonic: 'OR A, u8',
-    index: 0xf8,
+    index: 0xf6,
     execute(cpu) {
         const value = cpu.readMemoryFromProgramCounter() & 0xff;
         cpu.incProgramCounter();
@@ -2848,7 +2848,7 @@ export const CP_A_n8 = {
 
 export const ADD_SP_i8 = {
     mnemonic: 'ADD SP, i8',
-    index: 0xfe,
+    index: 0xe8,
     execute(cpu) {
 
         const value = cpu.readMemoryFromProgramCounter();
@@ -2897,9 +2897,7 @@ export const LD_SP_HL = {
     mnemonic: 'LD SP, HL',
     index: 0xf9,
     execute(cpu) {
-        const value = cpu.sp & 0xffff;
-        cpu.registers.H = (value >> 8) & 0xff;
-        cpu.registers.L = value & 0xff;
+        cpu.sp = readValueFromHLRegisters(cpu);
 
         return 2;
     }
