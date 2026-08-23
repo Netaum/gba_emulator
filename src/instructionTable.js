@@ -40,10 +40,10 @@ const instTable =
   I.AND_A_B, I.AND_A_C, I.AND_A_D, I.AND_A_E, I.AND_A_H, I.AND_A_L, I.AND_A_iHL, I.AND_A_A, I.XOR_A_B, I.XOR_A_C, I.XOR_A_D, I.XOR_A_E, I.XOR_A_H, I.XOR_A_L, I.XOR_A_iHL, I.XOR_A_A,
   I.OR_A_B,  I.OR_A_C,  I.OR_A_D,  I.OR_A_E,  I.OR_A_H,  I.OR_A_L,  I.OR_A_iHL,  I.OR_A_A,  I.CP_A_B,  I.CP_A_C,  I.CP_A_D,  I.CP_A_E,  I.CP_A_H,  I.CP_A_L,  I.CP_A_iHL,  I.CP_A_A,
 
-  I.RET_NZ,      I.POP_BC, I.JP_NZ_u16, I.JP_u16,      I.CALL_NZ_u16, I.PUSH_BC, I.ADD_A_u8, I.RST_00H, I.RET_Z,       I.RET,        I.JP_Z_u16,  I.PREFIX_CB,  I.CALL_Z_u16, I.CALL_u16,   I.ADC_A_u8, I.RST_08H,
-  I.RET_NC,      I.POP_DE, I.JP_NC_u16, I.ILLEGAL_E4,  I.CALL_NC_u16, I.PUSH_DE, I.SUB_A_u8, I.RST_10H, I.RET_C,       I.RETI,       I.JP_C_u16,  I.ILLEGAL_F4, I.CALL_C_u16, I.ILLEGAL_FC, I.SBC_A_u8, I.RST_18H,
-  I.XXXXX, I.POP_HL, I.LDXXXXX,  I.ILLEGAL_E8,  I.ILLEGAL_E9,  I.PUSH_HL, I.AND_A_u8, I.RST_20H, I.ADD_SP_i8,   I.JP_HL,      I.LD_iHLp_A, I.ILLEGAL_F8, I.ILLEGAL_F9, I.ILLEGAL_FA, I.XOR_A_u8, I.RST_28H,
-  I.XXXXX,   I.POP_AF, I.LDXXXXX, I.DI,          I.ILLEGAL_EE,  I.PUSH_AF, I.OR_A_u8,  I.RST_30H, I.LD_HL_iSPi8, I.LD_SP_HL,   I.LD_A_iHLn, I.EI,         I.ILLEGAL_FE, I.ILLEGAL_FF, I.CP_A_u8,  I.RST_38H
+  I.RET_NZ,           I.POP_BC, I.JP_NZ_n16,      I.JP_n16,       I.CALL_NZ_n16, I.PUSH_BC, I.ADD_A_u8, I.RST_00H, I.RET_Z,       I.RET,        I.JP_Z_n16,  I.PREFIX_CB,   I.CALL_Z_n16,  I.CALL_n16,    I.ADC_A_u8, I.RST_08H,
+  I.RET_NC,           I.POP_DE, I.JP_NC_n16,      illegal(0xd3),  I.CALL_NC_n16, I.PUSH_DE, I.SUB_A_u8, I.RST_10H, I.RET_C,       I.RETI,       I.JP_C_n16,  illegal(0xdb), I.CALL_C_n16,  illegal(0xdd), I.SBC_A_u8, I.RST_18H,
+  I.LD_iFF00_p_n8_A,  I.POP_HL, I.LD_iFF00_p_C_A, illegal(0xe3),  illegal(0xe4), I.PUSH_HL, I.AND_A_u8, I.RST_20H, I.ADD_SP_i8,   I.JP_HL,      I.LD_in16_A, illegal(0xeb), illegal(0xec), illegal(0xed), I.XOR_A_u8, I.RST_28H,
+  I.LD_A_iFF00_p_n8,  I.POP_AF, I.LD_A_iFF00_p_C, I.DI,           illegal(0xf4), I.PUSH_AF, I.OR_A_u8,  I.RST_30H, I.LD_HL_iSPi8, I.LD_SP_HL,   I.LD_A_in16, I.EI,          illegal(0xfc), illegal(0xfd), I.CP_A_u8,  I.RST_38H
 ];
 
 // CB-prefixed instructions live in their own 256-entry table.

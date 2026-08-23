@@ -1,3 +1,5 @@
+import { readValueFromHLRegisters } from "./instructions";
+
 const Flags = Object.freeze({
     Zero: 0x80,
     Substraction: 0x40,
@@ -53,14 +55,24 @@ function u16ToHiLo(u16) {
     return values;
 }
 
-function loadRegister16U16(cpu, registerHi, registerLo) {
+function readU16(cpu) {
     const lo = cpu.readMemoryFromProgramCounter();
     cpu.incProgramCounter();
     const hi = cpu.readMemoryFromProgramCounter();
     cpu.incProgramCounter();
 
-    cpu.registers[registerHi] = hi & 0xff;
-    cpu.registers[registerLo] = lo & 0xff;
+    return {
+        Hi: hi & 0xff,
+        Lo: lo & 0xff,
+        Value: hiLoToU16(hi, lo)
+    };
+}
+
+function loadRegister16U16(cpu, registerHi, registerLo) {
+    const hilo = readU16(cpu);
+
+    cpu.registers[registerHi] = hilo.Hi;
+    cpu.registers[registerLo] = hilo.Lo;
     return 3;
 }
 
@@ -107,7 +119,7 @@ function subtractRegisterFromValue(cpu, registerTo, value, useCarry = false) {
     const operand = value & 0xff;
     const diff = to - (operand + carryIn);
 
-    const halfCarry =  ((operand & 0x0f) + carryIn) > (to & 0x0f);
+    const halfCarry = ((operand & 0x0f) + carryIn) > (to & 0x0f);
     const carryOut = (operand + carryIn) > to;
 
     cpu.registers[registerTo] = diff & 0xff;
@@ -193,12 +205,8 @@ export const LD_SP_u16 = {
     mnemonic: 'LD SP, u16',
     index: 0x31,
     execute(cpu) {
-        const lo = cpu.readMemoryFromProgramCounter();
-        cpu.incProgramCounter();
-        const hi = cpu.readMemoryFromProgramCounter();
-        cpu.incProgramCounter();
-
-        cpu.sp = hiLoToU16(hi, lo);
+        const hilo = readU16(cpu);
+        cpu.sp = hilo.Value;
 
         return 3;
     },
@@ -789,12 +797,8 @@ export const LD_iu16_SP = {
     index: 0x08,
     execute(cpu) {
 
-        const lo = cpu.readMemoryFromProgramCounter();
-        cpu.incProgramCounter();
-        const hi = cpu.readMemoryFromProgramCounter();
-        cpu.incProgramCounter();
-
-        const address = hiLoToU16(hi, lo);
+        const hilo = readU16(cpu);
+        const address = hilo.Value;
         cpu.writeMemory(address, cpu.sp & 0xff);
         cpu.writeMemory((address + 1) & 0xffff, (cpu.sp >> 8) & 0xff);
 
@@ -1947,7 +1951,7 @@ export const AND_A_iHL = {
         return 2;
     }
 }
-    
+
 // #endregion
 
 // #region XOR A, r8
@@ -2106,7 +2110,7 @@ export const OR_A_A = {
         return orRegisterWithRegister(cpu, 'A', 'A');
     }
 }
- 
+
 // #endregion
 
 // #region CP A, r8
@@ -2199,3 +2203,555 @@ export const CP_A_A = {
 
 // #endregion
 
+// #region RET
+
+function returnFromSubrotine(cpu) {
+
+    const low = cpu.readMemory(cpu.sp) & 0xff;
+    cpu.sp = (cpu.sp + 1) & 0xffff;
+    const high = cpu.readMemory(cpu.sp) & 0xff;
+    cpu.sp = (cpu.sp + 1) & 0xffff;
+    cpu.pc = ((high << 8) | low) & 0xffff;
+
+}
+
+export const RET_NZ = {
+    mnemonic: 'RET NZ',
+    index: 0xc0,
+    execute(cpu) {
+        if (condNZ(cpu)) {
+            returnFromSubrotine(cpu);
+            return 5;
+        }
+
+        return 2;
+
+    }
+}
+
+export const RET_NC = {
+    mnemonic: 'RET NC',
+    index: 0xd0,
+    execute(cpu) {
+        if (condNC(cpu)) {
+            returnFromSubrotine(cpu);
+            return 5;
+        }
+
+        return 2;
+
+    }
+}
+
+export const RET_Z = {
+    mnemonic: 'RET Z',
+    index: 0xc8,
+    execute(cpu) {
+        if (condZ(cpu)) {
+            returnFromSubrotine(cpu);
+            return 5;
+        }
+
+        return 2;
+
+    }
+}
+
+export const RET_C = {
+    mnemonic: 'RET C',
+    index: 0xd8,
+    execute(cpu) {
+        if (condC(cpu)) {
+            returnFromSubrotine(cpu);
+            return 5;
+        }
+
+        return 2;
+
+    }
+}
+
+export const RET = {
+    mnemonic: 'RET',
+    index: 0xc9,
+    execute(cpu) {
+        returnFromSubrotine(cpu);
+        return 4;
+    }
+}
+
+export const RETI = {
+    mnemonic: 'RETI',
+    index: 0xd9,
+    execute(cpu) {
+        cpu.ime = true;
+        returnFromSubrotine(cpu);
+        return 4;
+    }
+}
+
+// #endregion
+
+// #region LD [$FF00+n8]
+
+export const LD_iFF00_p_n8_A = {
+    mnemonic: 'LD (FF00+u8),A',
+    index: 0xe0,
+    execute(cpu) {
+        const value = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+        const address = 0xff00 + value;
+        cpu.writeMemory(address & 0xffff, cpu.registers.A);
+        return 3;
+    }
+}
+
+export const LD_A_iFF00_p_n8 = {
+    mnemonic: 'LD A,(FF00+u8)',
+    index: 0xf0,
+    execute(cpu) {
+        const value = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+        const address = 0xff00 + value;
+        const memoryValue = cpu.readMemory(address & 0xffff);
+        cpu.registers.A = memoryValue & 0xff;
+        return 3;
+    }
+}
+
+export const LD_iFF00_p_C_A = {
+    mnemonic: 'LD (FF00+C),A',
+    index: 0xe2,
+    execute(cpu) {
+        const address = 0xff00 + cpu.registers.C;
+        cpu.writeMemory(address & 0xffff, cpu.registers.A);
+        return 2;
+    }
+}
+
+export const LD_A_iFF00_p_C = {
+    mnemonic: 'LD A,(FF00+C)',
+    index: 0xf2,
+    execute(cpu) {
+        const address = 0xff00 + cpu.registers.C;
+        const memoryValue = cpu.readMemory(address & 0xffff);
+        cpu.registers.A = memoryValue & 0xff;
+        return 2;
+    }
+}
+
+export const LD_in16_A = {
+    mnemonic: 'LD [u16],A',
+    index: 0xea,
+    execute(cpu) {
+
+        const hi = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+
+        const lo = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+
+        const address = hiLoToU16(hi, lo);
+
+        cpu.writeMemory(address, cpu.registers.A);
+
+        return 4;
+    }
+}
+
+export const LD_A_in16 = {
+    mnemonic: 'LD A,[u16]',
+    index: 0xfa,
+    execute(cpu) {
+
+        const hi = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+
+        const lo = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+
+        const address = hiLoToU16(hi, lo);
+        const value = cpu.readMemory(address);
+
+        cpu.registers.A = value;
+
+        return 4;
+    }
+}
+
+// #endregion
+
+// #region PUSH POP
+
+function popRegister16(cpu, regHigh, regLow) {
+
+    const low = cpu.readMemory(cpu.sp) & 0xff;
+    cpu.sp = (cpu.sp + 1) & 0xffff;
+    const high = cpu.readMemory(cpu.sp) & 0xff;
+    cpu.sp = (cpu.sp + 1) & 0xffff;
+
+    cpu.registers[regHigh] = high & 0xff;
+    cpu.registers[regLow] = low & 0xff;
+}
+
+function pushRegister16(cpu, regHigh, regLow) {
+    cpu.sp = (cpu.sp - 1) & 0xffff;
+    cpu.writeMemory(cpu.sp, cpu.registers[regHigh] & 0xff, false);
+    cpu.sp = (cpu.sp - 1) & 0xffff;
+    cpu.writeMemory(cpu.sp, cpu.registers[regLow] & 0xff, false);
+
+}
+
+export const POP_BC = {
+    mnemonic: 'POP BC',
+    index: 0xc1,
+    execute(cpu) {
+        popRegister16(cpu, 'B', 'C');
+        return 3;
+    }
+}
+
+export const POP_DE = {
+    mnemonic: 'POP DE',
+    index: 0xd1,
+    execute(cpu) {
+        popRegister16(cpu, 'D', 'E');
+        return 3;
+    }
+}
+
+export const POP_HL = {
+    mnemonic: 'POP HL',
+    index: 0xe1,
+    execute(cpu) {
+        popRegister16(cpu, 'H', 'L');
+        return 3;
+    }
+}
+
+export const POP_AF = {
+    mnemonic: 'POP AF',
+    index: 0xf1,
+    execute(cpu) {
+
+        const low = cpu.readMemory(cpu.sp) & 0xff;
+        cpu.sp = (cpu.sp + 1) & 0xffff;
+        const high = cpu.readMemory(cpu.sp) & 0xff;
+        cpu.sp = (cpu.sp + 1) & 0xffff;
+
+
+        cpu.registers.F = low & 0xf0;
+        cpu.registers.A = high & 0xff;
+        return 3;
+    }
+}
+
+export const PUSH_BC = {
+    mnemonic: 'PUSH BC',
+    index: 0xc5,
+    execute(cpu) {
+        pushRegister16(cpu, 'B', 'C');
+        return 4;
+    }
+}
+
+export const PUSH_DE = {
+    mnemonic: 'PUSH DE',
+    index: 0xd5,
+    execute(cpu) {
+        pushRegister16(cpu, 'D', 'E');
+        return 4;
+    }
+}
+
+export const PUSH_HL = {
+    mnemonic: 'PUSH HL',
+    index: 0xe5,
+    execute(cpu) {
+        pushRegister16(cpu, 'H', 'L');
+        return 4;
+    }
+}
+
+export const PUSH_AF = {
+    mnemonic: 'PUSH AF',
+    index: 0xf5,
+    execute(cpu) {
+        cpu.sp = (cpu.sp - 1) & 0xffff;
+        cpu.writeMemory(cpu.sp, cpu.registers.A & 0xff, false);
+        cpu.sp = (cpu.sp - 1) & 0xffff;
+        cpu.writeMemory(cpu.sp, cpu.registers.F & 0xf0, false);
+        return 4;
+    }
+}
+
+// #endregion
+
+// #region JP
+
+function jumpToAddress(cpu, address) {
+    cpu.pc = address & 0xffff;
+}
+
+export const JP_NZ_n16 = {
+    mnemonic: 'JP NZ, u16',
+    index: 0xc2,
+    execute(cpu) {
+
+        const low = cpu.readMemory(cpu.sp) & 0xff;
+        cpu.sp = (cpu.sp + 1) & 0xffff;
+        const high = cpu.readMemory(cpu.sp) & 0xff;
+        cpu.sp = (cpu.sp + 1) & 0xffff;
+
+        const address = hiLoToU16(high, low);
+
+        if (condNZ(cpu)) {
+            jumpToAddress(cpu, address);
+            return 4;
+        }
+
+        return 3;
+    }
+}
+
+export const JP_NC_n16 = {
+    mnemonic: 'JP NC, u16',
+    index: 0xd2,
+    execute(cpu) {
+
+        const low = cpu.readMemory(cpu.sp) & 0xff;
+        cpu.sp = (cpu.sp + 1) & 0xffff;
+        const high = cpu.readMemory(cpu.sp) & 0xff;
+        cpu.sp = (cpu.sp + 1) & 0xffff;
+
+        const address = hiLoToU16(high, low);
+
+        if (condNC(cpu)) {
+            jumpToAddress(cpu, address);
+            return 4;
+        }
+
+        return 3;
+    }
+}
+
+export const JP_n16 = {
+    mnemonic: 'JP u16',
+    index: 0xc3,
+    execute(cpu) {
+
+        const low = cpu.readMemory(cpu.sp) & 0xff;
+        cpu.sp = (cpu.sp + 1) & 0xffff;
+        const high = cpu.readMemory(cpu.sp) & 0xff;
+        cpu.sp = (cpu.sp + 1) & 0xffff;
+
+        const address = hiLoToU16(high, low);
+        jumpToAddress(cpu, address);
+        return 4;
+    }
+}
+
+export const JP_Z_n16 = {
+    mnemonic: 'JP Z, u16',
+    index: 0xca,
+    execute(cpu) {
+
+        const low = cpu.readMemory(cpu.sp) & 0xff;
+        cpu.sp = (cpu.sp + 1) & 0xffff;
+        const high = cpu.readMemory(cpu.sp) & 0xff;
+        cpu.sp = (cpu.sp + 1) & 0xffff;
+
+        const address = hiLoToU16(high, low);
+
+        if (condZ(cpu)) {
+            jumpToAddress(cpu, address);
+            return 4;
+        }
+
+        return 3;
+    }
+}
+
+export const JP_C_n16 = {
+    mnemonic: 'JP C, u16',
+    index: 0xda,
+    execute(cpu) {
+
+        const low = cpu.readMemory(cpu.sp) & 0xff;
+        cpu.sp = (cpu.sp + 1) & 0xffff;
+        const high = cpu.readMemory(cpu.sp) & 0xff;
+        cpu.sp = (cpu.sp + 1) & 0xffff;
+
+        const address = hiLoToU16(high, low);
+
+        if (condC(cpu)) {
+            jumpToAddress(cpu, address);
+            return 4;
+        }
+
+        return 3;
+    }
+}
+
+
+export const JP_HL = {
+    mnemonic: 'JP HL',
+    index: 0xe9,
+    execute(cpu) {
+
+        const address = readValueFromHLRegisters(cpu);
+        jumpToAddress(cpu, address);
+        return 1;
+    }
+}
+
+
+
+// #endregion
+
+// #region CALL RST
+
+function callFunction(cpu, address) {
+    const pc = cpu.pc & 0xffff;
+    cpu.sp = (cpu.sp - 1) & 0xffff;
+    cpu.writeMemory(cpu.sp, (pc >> 8) & 0xff, false);
+    cpu.sp = (cpu.sp - 1) & 0xffff;
+    cpu.writeMemory(cpu.sp, pc & 0xff, false);
+    cpu.pc = address & 0xffff;
+}
+
+export const CALL_n16 = {
+    mnemonic: 'CALL u16',
+    index: 0xcd,
+    execute(cpu) {
+        const hilo = readU16(cpu);
+        callFunction(cpu, hilo.Value);
+
+        return 6;
+    }
+}
+
+export const CALL_NZ_n16 = {
+    mnemonic: 'CALL NZ,u16',
+    index: 0xc4,
+    execute(cpu) {
+        const hilo = readU16(cpu);
+        if (condNZ(cpu)) {
+            callFunction(cpu, hilo.Value);
+            return 6;
+        }
+
+        return 3;
+    }
+}
+
+export const CALL_NC_n16 = {
+    mnemonic: 'CALL NC,u16',
+    index: 0xd4,
+    execute(cpu) {
+        const hilo = readU16(cpu);
+        if (condNC(cpu)) {
+            callFunction(cpu, hilo.Value);
+            return 6;
+        }
+
+        return 3;
+    }
+}
+
+export const CALL_Z_n16 = {
+    mnemonic: 'CALL Z,u16',
+    index: 0xcc,
+    execute(cpu) {
+        const hilo = readU16(cpu);
+        if (condZ(cpu)) {
+            callFunction(cpu, hilo.Value);
+            return 6;
+        }
+
+        return 3;
+    }
+}
+
+export const CALL_C_n16 = {
+    mnemonic: 'CALL C,u16',
+    index: 0xdc,
+    execute(cpu) {
+        const hilo = readU16(cpu);
+        if (condC(cpu)) {
+            callFunction(cpu, hilo.Value);
+            return 6;
+        }
+
+        return 3;
+    }
+}
+
+export const RST_00H = {
+    mnemonic: 'RST 00H',
+    index: 0xc7,
+    execute(cpu) {
+        callFunction(cpu, 0x00);
+    }
+}
+
+export const RST_10H = {
+    mnemonic: 'RST 10H',
+    index: 0xd7,
+    execute(cpu) {
+        callFunction(cpu, 0x10);
+    }
+}
+
+export const RST_20H = {
+    mnemonic: 'RST 20H',
+    index: 0xe7,
+    execute(cpu) {
+        callFunction(cpu, 0x20);
+    }
+}
+
+export const RST_30H = {
+    mnemonic: 'RST 30H',
+    index: 0xf7,
+    execute(cpu) {
+        callFunction(cpu, 0x30);
+    }
+}
+
+
+export const RST_08H = {
+    mnemonic: 'RST 08H',
+    index: 0xcf,
+    execute(cpu) {
+        callFunction(cpu, 0x08);
+    }
+}
+
+export const RST_18H = {
+    mnemonic: 'RST 18H',
+    index: 0xdf,
+    execute(cpu) {
+        callFunction(cpu, 0x18);
+    }
+}
+
+export const RST_28H = {
+    mnemonic: 'RST 28H',
+    index: 0xef,
+    execute(cpu) {
+        callFunction(cpu, 0x28);
+    }
+}
+
+export const RST_38H = {
+    mnemonic: 'RST 38H',
+    index: 0xff,
+    execute(cpu) {
+        callFunction(cpu, 0x38);
+    }
+}
+
+
+
+// #endregion
