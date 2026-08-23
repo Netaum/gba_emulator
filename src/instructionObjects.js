@@ -1,11 +1,22 @@
-import { readValueFromHLRegisters } from "./instructions";
-
 const Flags = Object.freeze({
     Zero: 0x80,
     Substraction: 0x40,
     HalfCarry: 0x20,
     Carry: 0x10,
 });
+
+function readValueFromHLRegisters(cpu) {
+    return ((cpu.registers.H << 8) | cpu.registers.L) & 0xffff;
+}
+
+function writeValueIntoHLRegisters(cpu, value) {
+    cpu.registers.H = (value >> 8) & 0xff;
+    cpu.registers.L = value & 0xff;
+}
+
+function applySignExtension(value) {
+    return (value << 24) >> 24;
+}
 
 function carryFlag(cpu) {
     return (cpu.registers.F & Flags.Carry) !== 0 ? 1 : 0;
@@ -55,7 +66,7 @@ function u16ToHiLo(u16) {
     return values;
 }
 
-function readU16(cpu) {
+function readU16FromMemory(cpu) {
     const lo = cpu.readMemoryFromProgramCounter();
     cpu.incProgramCounter();
     const hi = cpu.readMemoryFromProgramCounter();
@@ -69,7 +80,7 @@ function readU16(cpu) {
 }
 
 function loadRegister16U16(cpu, registerHi, registerLo) {
-    const hilo = readU16(cpu);
+    const hilo = readU16FromMemory(cpu);
 
     cpu.registers[registerHi] = hilo.Hi;
     cpu.registers[registerLo] = hilo.Lo;
@@ -84,8 +95,9 @@ function loadRegisterFromHLMemory(cpu, registerTo) {
 }
 
 function addRegisterFromValue(cpu, registerTo, value, useCarry = false) {
+    
     const to = cpu.registers[registerTo] & 0xff;
-    const carryIn = carryFlag(cpu) ? 1 : 0;
+    const carryIn = useCarry ? carryFlag(cpu) : 0;
 
     const sum = value + to + carryIn;
 
@@ -205,7 +217,7 @@ export const LD_SP_u16 = {
     mnemonic: 'LD SP, u16',
     index: 0x31,
     execute(cpu) {
-        const hilo = readU16(cpu);
+        const hilo = readU16FromMemory(cpu);
         cpu.sp = hilo.Value;
 
         return 3;
@@ -797,7 +809,7 @@ export const LD_iu16_SP = {
     index: 0x08,
     execute(cpu) {
 
-        const hilo = readU16(cpu);
+        const hilo = readU16FromMemory(cpu);
         const address = hilo.Value;
         cpu.writeMemory(address, cpu.sp & 0xff);
         cpu.writeMemory((address + 1) & 0xffff, (cpu.sp >> 8) & 0xff);
@@ -1734,7 +1746,7 @@ export const ADC_A_iHL = {
     execute(cpu) {
         const address = hiLoToU16(cpu.registers.H, cpu.registers.L);
         const oldValue = cpu.readMemory(address) & 0xff;
-        addRegisterFromValueWithCarry(cpu, 'A', oldValue);
+        addRegisterFromValue(cpu, 'A', oldValue, true);
         return 2;
     }
 }
@@ -2340,44 +2352,6 @@ export const LD_A_iFF00_p_C = {
     }
 }
 
-export const LD_in16_A = {
-    mnemonic: 'LD [u16],A',
-    index: 0xea,
-    execute(cpu) {
-
-        const hi = cpu.readMemoryFromProgramCounter() & 0xff;
-        cpu.incProgramCounter();
-
-        const lo = cpu.readMemoryFromProgramCounter() & 0xff;
-        cpu.incProgramCounter();
-
-        const address = hiLoToU16(hi, lo);
-
-        cpu.writeMemory(address, cpu.registers.A);
-
-        return 4;
-    }
-}
-
-export const LD_A_in16 = {
-    mnemonic: 'LD A,[u16]',
-    index: 0xfa,
-    execute(cpu) {
-
-        const hi = cpu.readMemoryFromProgramCounter() & 0xff;
-        cpu.incProgramCounter();
-
-        const lo = cpu.readMemoryFromProgramCounter() & 0xff;
-        cpu.incProgramCounter();
-
-        const address = hiLoToU16(hi, lo);
-        const value = cpu.readMemory(address);
-
-        cpu.registers.A = value;
-
-        return 4;
-    }
-}
 
 // #endregion
 
@@ -2498,15 +2472,10 @@ export const JP_NZ_n16 = {
     index: 0xc2,
     execute(cpu) {
 
-        const low = cpu.readMemory(cpu.sp) & 0xff;
-        cpu.sp = (cpu.sp + 1) & 0xffff;
-        const high = cpu.readMemory(cpu.sp) & 0xff;
-        cpu.sp = (cpu.sp + 1) & 0xffff;
-
-        const address = hiLoToU16(high, low);
+        const hilo = readU16FromMemory(cpu);
 
         if (condNZ(cpu)) {
-            jumpToAddress(cpu, address);
+            jumpToAddress(cpu, hilo.Value);
             return 4;
         }
 
@@ -2519,15 +2488,10 @@ export const JP_NC_n16 = {
     index: 0xd2,
     execute(cpu) {
 
-        const low = cpu.readMemory(cpu.sp) & 0xff;
-        cpu.sp = (cpu.sp + 1) & 0xffff;
-        const high = cpu.readMemory(cpu.sp) & 0xff;
-        cpu.sp = (cpu.sp + 1) & 0xffff;
-
-        const address = hiLoToU16(high, low);
+        const hilo = readU16FromMemory(cpu);
 
         if (condNC(cpu)) {
-            jumpToAddress(cpu, address);
+            jumpToAddress(cpu, hilo.Value);
             return 4;
         }
 
@@ -2540,13 +2504,8 @@ export const JP_n16 = {
     index: 0xc3,
     execute(cpu) {
 
-        const low = cpu.readMemory(cpu.sp) & 0xff;
-        cpu.sp = (cpu.sp + 1) & 0xffff;
-        const high = cpu.readMemory(cpu.sp) & 0xff;
-        cpu.sp = (cpu.sp + 1) & 0xffff;
-
-        const address = hiLoToU16(high, low);
-        jumpToAddress(cpu, address);
+        const hilo = readU16FromMemory(cpu);
+        jumpToAddress(cpu, hilo.Value);
         return 4;
     }
 }
@@ -2556,15 +2515,10 @@ export const JP_Z_n16 = {
     index: 0xca,
     execute(cpu) {
 
-        const low = cpu.readMemory(cpu.sp) & 0xff;
-        cpu.sp = (cpu.sp + 1) & 0xffff;
-        const high = cpu.readMemory(cpu.sp) & 0xff;
-        cpu.sp = (cpu.sp + 1) & 0xffff;
-
-        const address = hiLoToU16(high, low);
+        const hilo = readU16FromMemory(cpu);
 
         if (condZ(cpu)) {
-            jumpToAddress(cpu, address);
+            jumpToAddress(cpu, hilo.Value);
             return 4;
         }
 
@@ -2577,15 +2531,9 @@ export const JP_C_n16 = {
     index: 0xda,
     execute(cpu) {
 
-        const low = cpu.readMemory(cpu.sp) & 0xff;
-        cpu.sp = (cpu.sp + 1) & 0xffff;
-        const high = cpu.readMemory(cpu.sp) & 0xff;
-        cpu.sp = (cpu.sp + 1) & 0xffff;
-
-        const address = hiLoToU16(high, low);
-
+        const hilo = readU16FromMemory(cpu);
         if (condC(cpu)) {
-            jumpToAddress(cpu, address);
+            jumpToAddress(cpu, hilo.Value);
             return 4;
         }
 
@@ -2624,7 +2572,7 @@ export const CALL_n16 = {
     mnemonic: 'CALL u16',
     index: 0xcd,
     execute(cpu) {
-        const hilo = readU16(cpu);
+        const hilo = readU16FromMemory(cpu);
         callFunction(cpu, hilo.Value);
 
         return 6;
@@ -2635,7 +2583,7 @@ export const CALL_NZ_n16 = {
     mnemonic: 'CALL NZ,u16',
     index: 0xc4,
     execute(cpu) {
-        const hilo = readU16(cpu);
+        const hilo = readU16FromMemory(cpu);
         if (condNZ(cpu)) {
             callFunction(cpu, hilo.Value);
             return 6;
@@ -2649,7 +2597,7 @@ export const CALL_NC_n16 = {
     mnemonic: 'CALL NC,u16',
     index: 0xd4,
     execute(cpu) {
-        const hilo = readU16(cpu);
+        const hilo = readU16FromMemory(cpu);
         if (condNC(cpu)) {
             callFunction(cpu, hilo.Value);
             return 6;
@@ -2663,7 +2611,7 @@ export const CALL_Z_n16 = {
     mnemonic: 'CALL Z,u16',
     index: 0xcc,
     execute(cpu) {
-        const hilo = readU16(cpu);
+        const hilo = readU16FromMemory(cpu);
         if (condZ(cpu)) {
             callFunction(cpu, hilo.Value);
             return 6;
@@ -2677,7 +2625,7 @@ export const CALL_C_n16 = {
     mnemonic: 'CALL C,u16',
     index: 0xdc,
     execute(cpu) {
-        const hilo = readU16(cpu);
+        const hilo = readU16FromMemory(cpu);
         if (condC(cpu)) {
             callFunction(cpu, hilo.Value);
             return 6;
@@ -2692,6 +2640,7 @@ export const RST_00H = {
     index: 0xc7,
     execute(cpu) {
         callFunction(cpu, 0x00);
+        return 4;
     }
 }
 
@@ -2700,6 +2649,8 @@ export const RST_10H = {
     index: 0xd7,
     execute(cpu) {
         callFunction(cpu, 0x10);
+        return 4;
+
     }
 }
 
@@ -2708,6 +2659,9 @@ export const RST_20H = {
     index: 0xe7,
     execute(cpu) {
         callFunction(cpu, 0x20);
+
+        return 4;
+
     }
 }
 
@@ -2716,6 +2670,9 @@ export const RST_30H = {
     index: 0xf7,
     execute(cpu) {
         callFunction(cpu, 0x30);
+
+        return 4;
+
     }
 }
 
@@ -2725,6 +2682,9 @@ export const RST_08H = {
     index: 0xcf,
     execute(cpu) {
         callFunction(cpu, 0x08);
+
+        return 4;
+
     }
 }
 
@@ -2733,6 +2693,9 @@ export const RST_18H = {
     index: 0xdf,
     execute(cpu) {
         callFunction(cpu, 0x18);
+
+        return 4;
+
     }
 }
 
@@ -2741,6 +2704,9 @@ export const RST_28H = {
     index: 0xef,
     execute(cpu) {
         callFunction(cpu, 0x28);
+
+        return 4;
+
     }
 }
 
@@ -2749,9 +2715,215 @@ export const RST_38H = {
     index: 0xff,
     execute(cpu) {
         callFunction(cpu, 0x38);
+
+        return 4;
+
     }
 }
 
 
+export const DI = {
+    mnemonic: 'DI',
+    index: 0xf3,
+    execute(cpu) {
+        cpu.ime = false;
+
+        return 1;
+    }
+}
+
+export const EI = {
+    mnemonic: 'EI',
+    index: 0xfb,
+    execute(cpu) {
+        cpu.ime = true;
+
+        return 1;
+    }
+}
+
+export const ADD_A_n8 = {
+    mnemonic: 'ADD A, u8',
+    index: 0xc8,
+    execute(cpu) {
+        const value = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+
+        addRegisterFromValue(cpu, 'A', value);
+
+        return 2;
+    }
+}
+
+export const SUB_A_n8 = {
+    mnemonic: 'SUB A, u8',
+    index: 0xd8,
+    execute(cpu) {
+        const value = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+
+        subtractRegisterFromValue(cpu, 'A', value);
+
+        return 2;
+    }
+}
+
+export const AND_A_n8 = {
+    mnemonic: 'AND A, u8',
+    index: 0xe8,
+    execute(cpu) {
+        const value = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+
+        andRegisterWithValue(cpu, 'A', value);
+
+        return 2;
+    }
+}
+
+export const OR_A_n8 = {
+    mnemonic: 'OR A, u8',
+    index: 0xf8,
+    execute(cpu) {
+        const value = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+
+        orRegisterWithValue(cpu, 'A', value);
+
+        return 2;
+    }
+}
+
+export const ADC_A_n8 = {
+    mnemonic: 'ADC A, u8',
+    index: 0xce,
+    execute(cpu) {
+        const value = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+
+        addRegisterFromValue(cpu, 'A', value, true);
+
+        return 2;
+    }
+}
+
+export const SBC_A_n8 = {
+    mnemonic: 'SBC A, u8',
+    index: 0xde,
+    execute(cpu) {
+        const value = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+
+        subtractRegisterFromValue(cpu, 'A', value, true);
+
+        return 2;
+    }
+}
+
+export const XOR_A_n8 = {
+    mnemonic: 'XOR A, u8',
+    index: 0xee,
+    execute(cpu) {
+        const value = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+
+        xorRegisterWithValue(cpu, 'A', value, true);
+
+        return 2;
+    }
+}
+
+export const CP_A_n8 = {
+    mnemonic: 'CP A, u8',
+    index: 0xfe,
+    execute(cpu) {
+        const value = cpu.readMemoryFromProgramCounter() & 0xff;
+        cpu.incProgramCounter();
+
+        compareRegisterWithValue(cpu, 'A', value);
+
+        return 2;
+    }
+}
+
+export const ADD_SP_i8 = {
+    mnemonic: 'ADD SP, i8',
+    index: 0xfe,
+    execute(cpu) {
+
+        const value = cpu.readMemoryFromProgramCounter();
+        cpu.incProgramCounter();
+
+        const e8 = applySignExtension(value);
+
+        const halfCarry = ((cpu.sp & 0x0f) + (value & 0x0f)) > 0x0f;
+        const carryOut = ((cpu.sp & 0xff) + (value & 0xff)) > 0xff;
+
+        cpu.sp = (cpu.sp + e8) & 0xffff;
+        cpu.registers.F = 0x00;
+        cpu.registers.F |= halfCarry ? Flags.HalfCarry : 0x00;
+        cpu.registers.F |= carryOut ? Flags.Carry : 0x00;
+
+        return 4;
+    }
+}
+
+export const LD_HL_SP_i8 = {
+    mnemonic: 'LD HL, SP+i8',
+    index: 0xf8,
+    execute(cpu) {
+
+        const value = cpu.readMemoryFromProgramCounter();
+        cpu.incProgramCounter();
+
+        const e8 = applySignExtension(value);
+
+        const halfCarry = ((cpu.sp & 0x0f) + (value & 0x0f)) > 0x0f;
+        const carryOut = ((cpu.sp & 0xff) + (value & 0xff)) > 0xff;
+
+        const newValue = (cpu.sp + e8) & 0xffff;
+
+        writeValueIntoHLRegisters(cpu, newValue);
+
+        cpu.registers.F = 0x00;
+        cpu.registers.F |= halfCarry ? Flags.HalfCarry : 0x00;
+        cpu.registers.F |= carryOut ? Flags.Carry : 0x00;
+
+        return 3;
+    }
+}
+
+export const LD_SP_HL = {
+    mnemonic: 'LD SP, HL',
+    index: 0xf9,
+    execute(cpu) {
+        const value = cpu.sp & 0xffff;
+        cpu.registers.H = (value >> 8) & 0xff;
+        cpu.registers.L = value & 0xff;
+
+        return 2;
+    }
+}
+
+export const LD_in16_A = {
+    mnemonic: 'LD [u16], A',
+    index: 0xea,
+    execute(cpu) {
+        const hilo = readU16FromMemory(cpu);
+        cpu.writeMemory(hilo.Value & 0xffff, cpu.registers.A);
+        return 4;
+    }
+}
+
+export const LD_A_in16 = {
+    mnemonic: 'LD A, [u16]',
+    index: 0xfa,
+    execute(cpu) {
+        const hilo = readU16FromMemory(cpu);
+        const value = cpu.readMemory(hilo.Value);
+        cpu.registers.A = value & 0xffff;
+        return 4;
+    }
+}
 
 // #endregion
