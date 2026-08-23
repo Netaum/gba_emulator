@@ -1,4 +1,5 @@
 import * as I from './instructionObjects.js';
+import { cbInstructionObjects } from './cbInstructionObjects.js';
 
 const fmt = (n, digits) => n.toString(16).padStart(digits, '0').toUpperCase();
 
@@ -48,7 +49,4 @@ export const instructionTable = [
   I.LD_A_iFF00_p_n8,  I.POP_AF, I.LD_A_iFF00_p_C, I.DI,           illegal(0xf4), I.PUSH_AF, I.OR_A_n8,  I.RST_30H, I.LD_HL_SP_i8, I.LD_SP_HL,   I.LD_A_in16, I.EI,          illegal(0xfc), illegal(0xfd), I.CP_A_n8,  I.RST_38H
 ];
 
-// CB-prefixed instructions live in their own 256-entry table.
-// When the dispatcher sees opcode 0xCB, it reads the next byte and looks
-// it up here instead.  Nothing is implemented yet — fill it in as you go.
-export const cbInstructionTable = Array.from({ length: 256 }, (_, i) => todo(0xCB00 | i));
+export const cbInstructionTable = cbInstructionObjects;
