@@ -30,10 +30,20 @@ const instTable =
   I.JR_NC_i8, I.LD_SP_u16 , I.LD_iHLn_A, I.INC_SP, I.INC_iHL, I.DEC_iHL, I.LD_iHL_u8, I.SCF,  I.JR_C_i8,    I.ADD_HL_SP, I.LD_A_iHLn, I.DEC_SP, I.INC_A, I.DEC_A, I.LD_A_n8, I.CCF,
 
 
-  I.LD_B_B,   I.LD_B_C,   I.LD_B_D,   I.LD_B_E,   I.LD_B_H,   I.LD_B_L,   I.LD_B_iHL, 
-  I.LD_D_B,   I.LD_D_C,   I.LD_D_D,   I.LD_D_E,   I.LD_D_H,   I.LD_D_L,   I.LD_D_iHL, 
-  I.LD_H_B,   I.LD_H_C,   I.LD_H_D,   I.LD_H_E,   I.LD_H_H,   I.LD_H_L,   I.LD_H_iHL, 
-  I.LD_iHL_B, I.LD_iHL_C, I.LD_iHL_D, I.LD_iHL_E, I.LD_iHL_H, I.LD_iHL_L, I.HALT,
+  I.LD_B_B,   I.LD_B_C,   I.LD_B_D,   I.LD_B_E,   I.LD_B_H,   I.LD_B_L,   I.LD_B_iHL, I.LD_B_A,   I.LD_C_B, I.LD_C_C, I.LD_C_D, I.LD_C_E, I.LD_C_H, I.LD_C_L, I.LD_C_iHL, I.LD_C_A,
+  I.LD_D_B,   I.LD_D_C,   I.LD_D_D,   I.LD_D_E,   I.LD_D_H,   I.LD_D_L,   I.LD_D_iHL, I.LD_D_A,   I.LD_E_B, I.LD_E_C, I.LD_E_D, I.LD_E_E, I.LD_E_H, I.LD_E_L, I.LD_E_iHL, I.LD_E_A,
+  I.LD_H_B,   I.LD_H_C,   I.LD_H_D,   I.LD_H_E,   I.LD_H_H,   I.LD_H_L,   I.LD_H_iHL, I.LD_H_A,   I.LD_L_B, I.LD_L_C, I.LD_L_D, I.LD_L_E, I.LD_L_H, I.LD_L_L, I.LD_L_iHL, I.LD_L_A,
+  I.LD_iHL_B, I.LD_iHL_C, I.LD_iHL_D, I.LD_iHL_E, I.LD_iHL_H, I.LD_iHL_L, I.HALT,     I.LD_iHL_A, I.LD_A_B, I.LD_A_C, I.LD_A_D, I.LD_A_E, I.LD_A_H, I.LD_A_L, I.LD_A_iHL, I.LD_A_A,
+
+  I.ADD_A_B, I.ADD_A_C, I.ADD_A_D, I.ADD_A_E, I.ADD_A_H, I.ADD_A_L, I.ADD_A_iHL, I.ADD_A_A, I.ADC_A_B, I.ADC_A_C, I.ADC_A_D, I.ADC_A_E, I.ADC_A_H, I.ADC_A_L, I.ADC_A_iHL, I.ADC_A_A,
+  I.SUB_A_B, I.SUB_A_C, I.SUB_A_D, I.SUB_A_E, I.SUB_A_H, I.SUB_A_L, I.SUB_A_iHL, I.SUB_A_A, I.SBC_A_B, I.SBC_A_C, I.SBC_A_D, I.SBC_A_E, I.SBC_A_H, I.SBC_A_L, I.SBC_A_iHL, I.SBC_A_A,
+  I.AND_A_B, I.AND_A_C, I.AND_A_D, I.AND_A_E, I.AND_A_H, I.AND_A_L, I.AND_A_iHL, I.AND_A_A, I.XOR_A_B, I.XOR_A_C, I.XOR_A_D, I.XOR_A_E, I.XOR_A_H, I.XOR_A_L, I.XOR_A_iHL, I.XOR_A_A,
+  I.OR_A_B,  I.OR_A_C,  I.OR_A_D,  I.OR_A_E,  I.OR_A_H,  I.OR_A_L,  I.OR_A_iHL,  I.OR_A_A,  I.CP_A_B,  I.CP_A_C,  I.CP_A_D,  I.CP_A_E,  I.CP_A_H,  I.CP_A_L,  I.CP_A_iHL,  I.CP_A_A,
+
+  I.RET_NZ,      I.POP_BC, I.JP_NZ_u16, I.JP_u16,      I.CALL_NZ_u16, I.PUSH_BC, I.ADD_A_u8, I.RST_00H, I.RET_Z,       I.RET,        I.JP_Z_u16,  I.PREFIX_CB,  I.CALL_Z_u16, I.CALL_u16,   I.ADC_A_u8, I.RST_08H,
+  I.RET_NC,      I.POP_DE, I.JP_NC_u16, I.ILLEGAL_E4,  I.CALL_NC_u16, I.PUSH_DE, I.SUB_A_u8, I.RST_10H, I.RET_C,       I.RETI,       I.JP_C_u16,  I.ILLEGAL_F4, I.CALL_C_u16, I.ILLEGAL_FC, I.SBC_A_u8, I.RST_18H,
+  I.XXXXX, I.POP_HL, I.LDXXXXX,  I.ILLEGAL_E8,  I.ILLEGAL_E9,  I.PUSH_HL, I.AND_A_u8, I.RST_20H, I.ADD_SP_i8,   I.JP_HL,      I.LD_iHLp_A, I.ILLEGAL_F8, I.ILLEGAL_F9, I.ILLEGAL_FA, I.XOR_A_u8, I.RST_28H,
+  I.XXXXX,   I.POP_AF, I.LDXXXXX, I.DI,          I.ILLEGAL_EE,  I.PUSH_AF, I.OR_A_u8,  I.RST_30H, I.LD_HL_iSPi8, I.LD_SP_HL,   I.LD_A_iHLn, I.EI,         I.ILLEGAL_FE, I.ILLEGAL_FF, I.CP_A_u8,  I.RST_38H
 ];
 
 // CB-prefixed instructions live in their own 256-entry table.

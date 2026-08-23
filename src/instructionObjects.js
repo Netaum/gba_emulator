@@ -64,6 +64,105 @@ function loadRegister16U16(cpu, registerHi, registerLo) {
     return 3;
 }
 
+function loadRegisterFromHLMemory(cpu, registerTo) {
+    const address = hiLoToU16(cpu.registers.H, cpu.registers.L);
+    const value = cpu.readMemory(address);
+    cpu.registers[registerTo] = value & 0xff;
+    return 2;
+}
+
+function addRegisterFromValue(cpu, registerTo, value, useCarry = false) {
+    const to = cpu.registers[registerTo] & 0xff;
+    const carryIn = carryFlag(cpu) ? 1 : 0;
+
+    const sum = value + to + carryIn;
+
+    const halfCarry = ((value & 0x0f) + (to & 0x0f) + carryIn) > 0x0f;
+    const carryOut = sum > 0xff;
+
+    cpu.registers[registerTo] = sum & 0xff;
+
+    cpu.registers.F = 0x00;
+    cpu.registers.F |= (cpu.registers[registerTo] === 0) ? Flags.Zero : 0x00;
+    cpu.registers.F |= halfCarry ? Flags.HalfCarry : 0x00;
+    cpu.registers.F |= carryOut ? Flags.Carry : 0x00;
+}
+
+function addRegisterFromRegister(cpu, registerTo, registerFrom) {
+    const from = cpu.registers[registerFrom] & 0xff;
+    addRegisterFromValue(cpu, registerTo, from, false);
+    return 1;
+}
+
+function addRegisterFromRegisterWithCarry(cpu, registerTo, registerFrom) {
+    const from = cpu.registers[registerFrom] & 0xff;
+    addRegisterFromValue(cpu, registerTo, from, true);
+    return 1;
+}
+
+function subtractRegisterFromValue(cpu, registerTo, value, useCarry = false) {
+    const carryIn = useCarry ? carryFlag(cpu) : 0;
+    const to = cpu.registers[registerTo] & 0xff;
+
+    const operand = value & 0xff;
+    const diff = to - (operand + carryIn);
+
+    const halfCarry =  ((operand & 0x0f) + carryIn) > (to & 0x0f);
+    const carryOut = (operand + carryIn) > to;
+
+    cpu.registers[registerTo] = diff & 0xff;
+
+    cpu.registers.F = Flags.Substraction;
+    cpu.registers.F |= (cpu.registers[registerTo] === 0) ? Flags.Zero : 0x00;
+    cpu.registers.F |= halfCarry ? Flags.HalfCarry : 0x00;
+    cpu.registers.F |= carryOut ? Flags.Carry : 0x00;
+}
+
+function subtractRegisterFromRegister(cpu, registerTo, registerFrom) {
+    const from = cpu.registers[registerFrom] & 0xff;
+    subtractRegisterFromValue(cpu, registerTo, from, false);
+    return 1;
+}
+
+function subtractRegisterFromRegisterWithCarry(cpu, registerTo, registerFrom) {
+    const from = cpu.registers[registerFrom] & 0xff;
+    subtractRegisterFromValue(cpu, registerTo, from, true);
+    return 1;
+}
+
+function andRegisterWithValue(cpu, registerTo, value) {
+    const to = cpu.registers[registerTo] & 0xff;
+    const comp = to & value;
+
+    cpu.registers[registerTo] = comp & 0xff;
+    cpu.registers.F = 0x00;
+
+    if (comp === 0)
+        cpu.registers.F |= Flags.Zero;
+
+    cpu.registers.F |= Flags.HalfCarry;
+}
+
+function andRegisterWithRegister(cpu, registerTo, registerFrom) {
+    const from = cpu.registers[registerFrom] & 0xff;
+    andRegisterWithValue(cpu, registerTo, from);
+    return 1;
+}
+
+function xorRegisterWithValue(cpu, registerTo, value) {
+    const to = cpu.registers[registerTo] & 0xff;
+    const result = to ^ value;
+
+    cpu.registers[registerTo] = result & 0xff;
+    cpu.registers.F = result === 0 ? Flags.Zero : 0x00;
+}
+
+function xorRegisterWithRegister(cpu, registerTo, registerFrom) {
+    const from = cpu.registers[registerFrom] & 0xff;
+    xorRegisterWithValue(cpu, registerTo, from);
+    return 1;
+}
+
 // #region LD REGISTER 16   
 
 export const LD_BC_u16 = {
@@ -948,8 +1047,6 @@ export const HALT = {
     }
 }
 
-// #region LD r8, r8
-
 function loadRegisterFromRegister(cpu, registerTo, registerFrom) {
     cpu.registers[registerTo] = cpu.registers[registerFrom];
     return 1;
@@ -977,6 +1074,38 @@ export const LD_H_B = {
     index: 0x60,
     execute(cpu) {
         return loadRegisterFromRegister(cpu, 'H', 'B');
+    }
+}
+
+export const LD_C_B = {
+    mnemonic: 'LD C, B',
+    index: 0x48,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'C', 'B');
+    }
+}
+
+export const LD_E_B = {
+    mnemonic: 'LD E, B',
+    index: 0x58,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'E', 'B');
+    }
+}
+
+export const LD_L_B = {
+    mnemonic: 'LD L, B',
+    index: 0x68,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'L', 'B');
+    }
+}
+
+export const LD_A_B = {
+    mnemonic: 'LD A, B',
+    index: 0x78,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'A', 'B');
     }
 }
 
@@ -1029,6 +1158,38 @@ export const LD_iHL_C = {
         return loadHLMemoryFromRegister(cpu, 'C');
     }
 }
+
+export const LD_C_C = {
+    mnemonic: 'LD C, C',
+    index: 0x49,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'C', 'C');
+    }
+}
+
+export const LD_E_C = {
+    mnemonic: 'LD E, C',
+    index: 0x59,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'E', 'C');
+    }
+}
+
+export const LD_L_C = {
+    mnemonic: 'LD L, C',
+    index: 0x69,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'L', 'C');
+    }
+}
+
+export const LD_A_C = {
+    mnemonic: 'LD A, C',
+    index: 0x79,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'A', 'C');
+    }
+}
 //#endregion
 
 // #region RD
@@ -1062,6 +1223,38 @@ export const LD_iHL_D = {
     index: 0x72,
     execute(cpu) {
         return loadHLMemoryFromRegister(cpu, 'D');
+    }
+}
+
+export const LD_C_D = {
+    mnemonic: 'LD C, D',
+    index: 0x4a,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'C', 'D');
+    }
+}
+
+export const LD_E_D = {
+    mnemonic: 'LD E, D',
+    index: 0x5a,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'E', 'D');
+    }
+}
+
+export const LD_L_D = {
+    mnemonic: 'LD L, D',
+    index: 0x6a,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'L', 'D');
+    }
+}
+
+export const LD_A_D = {
+    mnemonic: 'LD A, D',
+    index: 0x7a,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'A', 'D');
     }
 }
 
@@ -1101,6 +1294,38 @@ export const LD_iHL_E = {
     }
 }
 
+export const LD_C_E = {
+    mnemonic: 'LD C, E',
+    index: 0x4b,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'C', 'E');
+    }
+}
+
+export const LD_E_E = {
+    mnemonic: 'LD E, E',
+    index: 0x5b,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'E', 'E');
+    }
+}
+
+export const LD_L_E = {
+    mnemonic: 'LD L, E',
+    index: 0x6b,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'L', 'E');
+    }
+}
+
+export const LD_A_E = {
+    mnemonic: 'LD A, E',
+    index: 0x7b,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'A', 'E');
+    }
+}
+
 // #endregion
 
 // #region RH
@@ -1133,6 +1358,38 @@ export const LD_iHL_H = {
     index: 0x74,
     execute(cpu) {
         return loadHLMemoryFromRegister(cpu, 'H');
+    }
+}
+
+export const LD_C_H = {
+    mnemonic: 'LD C, H',
+    index: 0x4c,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'C', 'H');
+    }
+}
+
+export const LD_E_H = {
+    mnemonic: 'LD E, H',
+    index: 0x5c,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'E', 'H');
+    }
+}
+
+export const LD_L_H = {
+    mnemonic: 'LD L, H',
+    index: 0x6c,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'L', 'H');
+    }
+}
+
+export const LD_A_H = {
+    mnemonic: 'LD A, H',
+    index: 0x7c,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'A', 'H');
     }
 }
 
@@ -1171,14 +1428,142 @@ export const LD_iHL_L = {
     }
 }
 
+export const LD_C_L = {
+    mnemonic: 'LD C, L',
+    index: 0x4d,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'C', 'L');
+    }
+}
+
+export const LD_E_L = {
+    mnemonic: 'LD E, L',
+    index: 0x5d,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'E', 'L');
+    }
+}
+
+export const LD_L_L = {
+    mnemonic: 'LD L, L',
+    index: 0x6d,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'L', 'L');
+    }
+}
+
+export const LD_A_L = {
+    mnemonic: 'LD A, L',
+    index: 0x7d,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'A', 'L');
+    }
+}
+
 // #endregion
 
-function loadRegisterFromHLMemory(cpu, registerTo) {
-    const address = hiLoToU16(cpu.registers.H, cpu.registers.L);
-    const value = cpu.readMemory(address);
-    cpu.registers[registerTo] = value & 0xff;
-    return 2;
+// #region RA
+
+export const LD_B_A = {
+    mnemonic: 'LD B, A',
+    index: 0x47,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'B', 'A');
+    }
 }
+
+export const LD_D_A = {
+    mnemonic: 'LD D, A',
+    index: 0x57,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'D', 'A');
+    }
+}
+
+export const LD_H_A = {
+    mnemonic: 'LD H, A',
+    index: 0x67,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'H', 'A');
+    }
+}
+
+export const LD_iHL_A = {
+    mnemonic: 'LD [HL], A',
+    index: 0x77,
+    execute(cpu) {
+        return loadHLMemoryFromRegister(cpu, 'A');
+    }
+}
+
+export const LD_C_A = {
+    mnemonic: 'LD C, A',
+    index: 0x4f,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'C', 'A');
+    }
+}
+
+export const LD_E_A = {
+    mnemonic: 'LD E, A',
+    index: 0x5f,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'E', 'A');
+    }
+}
+
+export const LD_L_A = {
+    mnemonic: 'LD L, A',
+    index: 0x6f,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'L', 'A');
+    }
+}
+
+export const LD_A_A = {
+    mnemonic: 'LD A, A',
+    index: 0x7f,
+    execute(cpu) {
+        return loadRegisterFromRegister(cpu, 'A', 'A');
+    }
+}
+// #endregion
+
+// #region LOAD REGISTER 8 FROM HL MEMORY
+
+export const LD_C_iHL = {
+    mnemonic: 'LD C, [HL]',
+    index: 0x4e,
+    execute(cpu) {
+        return loadRegisterFromHLMemory(cpu, 'C');
+    }
+}
+
+export const LD_E_iHL = {
+    mnemonic: 'LD E, [HL]',
+    index: 0x5e,
+    execute(cpu) {
+        return loadRegisterFromHLMemory(cpu, 'E');
+    }
+}
+
+export const LD_L_iHL = {
+    mnemonic: 'LD L, [HL]',
+    index: 0x6e,
+    execute(cpu) {
+        return loadRegisterFromHLMemory(cpu, 'L');
+    }
+}
+
+export const LD_A_iHL = {
+    mnemonic: 'LD A, [HL]',
+    index: 0x7e,
+    execute(cpu) {
+        return loadRegisterFromHLMemory(cpu, 'A');
+    }
+}
+
+// #endregion
 
 // #region LD r8, [HL]
 export const LD_B_iHL = {
@@ -1210,4 +1595,607 @@ export const LD_H_iHL = {
 
 // #endregion
 
+// #region ADD A, r8
+
+export const ADD_A_B = {
+    mnemonic: 'ADD A, B',
+    index: 0x80,
+    execute(cpu) {
+        return addRegisterFromRegister(cpu, 'A', 'B');
+    }
+}
+
+export const ADD_A_C = {
+    mnemonic: 'ADD A, C',
+    index: 0x81,
+    execute(cpu) {
+        return addRegisterFromRegister(cpu, 'A', 'C');
+    }
+}
+
+export const ADD_A_D = {
+    mnemonic: 'ADD A, D',
+    index: 0x82,
+    execute(cpu) {
+        return addRegisterFromRegister(cpu, 'A', 'D');
+    }
+}
+
+export const ADD_A_E = {
+    mnemonic: 'ADD A, E',
+    index: 0x83,
+    execute(cpu) {
+        return addRegisterFromRegister(cpu, 'A', 'E');
+    }
+}
+
+export const ADD_A_H = {
+    mnemonic: 'ADD A, H',
+    index: 0x84,
+    execute(cpu) {
+        return addRegisterFromRegister(cpu, 'A', 'H');
+    }
+}
+
+export const ADD_A_L = {
+    mnemonic: 'ADD A, L',
+    index: 0x85,
+    execute(cpu) {
+        return addRegisterFromRegister(cpu, 'A', 'L');
+    }
+}
+
+export const ADD_A_iHL = {
+    mnemonic: 'ADD A, [HL]',
+    index: 0x86,
+    execute(cpu) {
+        const address = hiLoToU16(cpu.registers.H, cpu.registers.L);
+        const oldValue = cpu.readMemory(address) & 0xff;
+        addRegisterFromValue(cpu, 'A', oldValue);
+        return 2;
+    }
+}
+
+export const ADD_A_A = {
+    mnemonic: 'ADD A, A',
+    index: 0x87,
+    execute(cpu) {
+        return addRegisterFromRegister(cpu, 'A', 'A');
+    }
+}
+
 // #endregion
+
+// #region ADC A, r8
+
+export const ADC_A_B = {
+    mnemonic: 'ADC A, B',
+    index: 0x88,
+    execute(cpu) {
+        return addRegisterFromRegisterWithCarry(cpu, 'A', 'B');
+    }
+}
+
+export const ADC_A_C = {
+    mnemonic: 'ADC A, C',
+    index: 0x89,
+    execute(cpu) {
+        return addRegisterFromRegisterWithCarry(cpu, 'A', 'C');
+    }
+}
+
+export const ADC_A_D = {
+    mnemonic: 'ADC A, D',
+    index: 0x8a,
+    execute(cpu) {
+        return addRegisterFromRegisterWithCarry(cpu, 'A', 'D');
+    }
+}
+
+export const ADC_A_E = {
+    mnemonic: 'ADC A, E',
+    index: 0x8b,
+    execute(cpu) {
+        return addRegisterFromRegisterWithCarry(cpu, 'A', 'E');
+    }
+}
+
+export const ADC_A_H = {
+    mnemonic: 'ADC A, H',
+    index: 0x8c,
+    execute(cpu) {
+        return addRegisterFromRegisterWithCarry(cpu, 'A', 'H');
+    }
+}
+
+export const ADC_A_L = {
+    mnemonic: 'ADC A, L',
+    index: 0x8d,
+    execute(cpu) {
+        return addRegisterFromRegisterWithCarry(cpu, 'A', 'L');
+    }
+}
+
+export const ADC_A_A = {
+    mnemonic: 'ADC A, A',
+    index: 0x8f,
+    execute(cpu) {
+        return addRegisterFromRegisterWithCarry(cpu, 'A', 'A');
+    }
+}
+
+export const ADC_A_iHL = {
+    mnemonic: 'ADC A, [HL]',
+    index: 0x8e,
+    execute(cpu) {
+        const address = hiLoToU16(cpu.registers.H, cpu.registers.L);
+        const oldValue = cpu.readMemory(address) & 0xff;
+        addRegisterFromValueWithCarry(cpu, 'A', oldValue);
+        return 2;
+    }
+}
+
+// #endregion
+
+// #region SUB A, r8
+
+export const SUB_A_B = {
+    mnemonic: 'SUB A, B',
+    index: 0x90,
+    execute(cpu) {
+        return subtractRegisterFromRegister(cpu, 'A', 'B');
+    }
+}
+
+export const SUB_A_C = {
+    mnemonic: 'SUB A, C',
+    index: 0x91,
+    execute(cpu) {
+        return subtractRegisterFromRegister(cpu, 'A', 'C');
+    }
+}
+
+export const SUB_A_D = {
+    mnemonic: 'SUB A, D',
+    index: 0x92,
+    execute(cpu) {
+        return subtractRegisterFromRegister(cpu, 'A', 'D');
+    }
+}
+
+export const SUB_A_E = {
+    mnemonic: 'SUB A, E',
+    index: 0x93,
+    execute(cpu) {
+        return subtractRegisterFromRegister(cpu, 'A', 'E');
+    }
+}
+
+export const SUB_A_H = {
+    mnemonic: 'SUB A, H',
+    index: 0x94,
+    execute(cpu) {
+        return subtractRegisterFromRegister(cpu, 'A', 'H');
+    }
+}
+
+export const SUB_A_L = {
+    mnemonic: 'SUB A, L',
+    index: 0x95,
+    execute(cpu) {
+        return subtractRegisterFromRegister(cpu, 'A', 'L');
+    }
+}
+
+export const SUB_A_A = {
+    mnemonic: 'SUB A, A',
+    index: 0x97,
+    execute(cpu) {
+        return subtractRegisterFromRegister(cpu, 'A', 'A');
+    }
+}
+
+export const SUB_A_iHL = {
+    mnemonic: 'SUB A, [HL]',
+    index: 0x96,
+    execute(cpu) {
+        const address = hiLoToU16(cpu.registers.H, cpu.registers.L);
+        const oldValue = cpu.readMemory(address) & 0xff;
+        subtractRegisterFromValue(cpu, 'A', oldValue);
+        return 2;
+    }
+}
+
+// #endregion
+
+// #region SBC A, r8
+
+export const SBC_A_B = {
+    mnemonic: 'SBC A, B',
+    index: 0x98,
+    execute(cpu) {
+        return subtractRegisterFromRegisterWithCarry(cpu, 'A', 'B');
+    }
+}
+
+export const SBC_A_C = {
+    mnemonic: 'SBC A, C',
+    index: 0x99,
+    execute(cpu) {
+        return subtractRegisterFromRegisterWithCarry(cpu, 'A', 'C');
+    }
+}
+
+export const SBC_A_D = {
+    mnemonic: 'SBC A, D',
+    index: 0x9a,
+    execute(cpu) {
+        return subtractRegisterFromRegisterWithCarry(cpu, 'A', 'D');
+    }
+}
+
+export const SBC_A_E = {
+    mnemonic: 'SBC A, E',
+    index: 0x9b,
+    execute(cpu) {
+        return subtractRegisterFromRegisterWithCarry(cpu, 'A', 'E');
+    }
+}
+
+export const SBC_A_H = {
+    mnemonic: 'SBC A, H',
+    index: 0x9c,
+    execute(cpu) {
+        return subtractRegisterFromRegisterWithCarry(cpu, 'A', 'H');
+    }
+}
+
+export const SBC_A_L = {
+    mnemonic: 'SBC A, L',
+    index: 0x9d,
+    execute(cpu) {
+        return subtractRegisterFromRegisterWithCarry(cpu, 'A', 'L');
+    }
+}
+
+export const SBC_A_A = {
+    mnemonic: 'SBC A, A',
+    index: 0x9f,
+    execute(cpu) {
+        return subtractRegisterFromRegisterWithCarry(cpu, 'A', 'A');
+    }
+}
+
+export const SBC_A_iHL = {
+    mnemonic: 'SBC A, [HL]',
+    index: 0x9e,
+    execute(cpu) {
+        const address = hiLoToU16(cpu.registers.H, cpu.registers.L);
+        const oldValue = cpu.readMemory(address) & 0xff;
+        subtractRegisterFromValue(cpu, 'A', oldValue, true);
+        return 2;
+    }
+}
+
+// #endregion
+
+// #region AND A, r8
+
+export const AND_A_B = {
+    mnemonic: 'AND A, B',
+    index: 0xa0,
+    execute(cpu) {
+        return andRegisterWithRegister(cpu, 'A', 'B');
+    }
+}
+
+export const AND_A_C = {
+    mnemonic: 'AND A, C',
+    index: 0xa1,
+    execute(cpu) {
+        return andRegisterWithRegister(cpu, 'A', 'C');
+    }
+}
+
+export const AND_A_D = {
+    mnemonic: 'AND A, D',
+    index: 0xa2,
+    execute(cpu) {
+        return andRegisterWithRegister(cpu, 'A', 'D');
+    }
+}
+
+export const AND_A_E = {
+    mnemonic: 'AND A, E',
+    index: 0xa3,
+    execute(cpu) {
+        return andRegisterWithRegister(cpu, 'A', 'E');
+    }
+}
+
+export const AND_A_H = {
+    mnemonic: 'AND A, H',
+    index: 0xa4,
+    execute(cpu) {
+        return andRegisterWithRegister(cpu, 'A', 'H');
+    }
+}
+
+export const AND_A_L = {
+    mnemonic: 'AND A, L',
+    index: 0xa5,
+    execute(cpu) {
+        return andRegisterWithRegister(cpu, 'A', 'L');
+    }
+}
+
+export const AND_A_A = {
+    mnemonic: 'AND A, A',
+    index: 0xa7,
+    execute(cpu) {
+        return andRegisterWithRegister(cpu, 'A', 'A');
+    }
+}
+
+export const AND_A_iHL = {
+    mnemonic: 'AND A, [HL]',
+    index: 0xa6,
+    execute(cpu) {
+        const address = hiLoToU16(cpu.registers.H, cpu.registers.L);
+        const oldValue = cpu.readMemory(address) & 0xff;
+        andRegisterWithValue(cpu, 'A', oldValue);
+        return 2;
+    }
+}
+    
+// #endregion
+
+// #region XOR A, r8
+
+export const XOR_A_B = {
+    mnemonic: 'XOR A, B',
+    index: 0xa8,
+    execute(cpu) {
+        return xorRegisterWithRegister(cpu, 'A', 'B');
+    }
+}
+
+export const XOR_A_C = {
+    mnemonic: 'XOR A, C',
+    index: 0xa9,
+    execute(cpu) {
+        return xorRegisterWithRegister(cpu, 'A', 'C');
+    }
+}
+
+export const XOR_A_D = {
+    mnemonic: 'XOR A, D',
+    index: 0xaa,
+    execute(cpu) {
+        return xorRegisterWithRegister(cpu, 'A', 'D');
+    }
+}
+
+export const XOR_A_E = {
+    mnemonic: 'XOR A, E',
+    index: 0xab,
+    execute(cpu) {
+        return xorRegisterWithRegister(cpu, 'A', 'E');
+    }
+}
+
+export const XOR_A_H = {
+    mnemonic: 'XOR A, H',
+    index: 0xac,
+    execute(cpu) {
+        return xorRegisterWithRegister(cpu, 'A', 'H');
+    }
+}
+
+export const XOR_A_L = {
+    mnemonic: 'XOR A, L',
+    index: 0xad,
+    execute(cpu) {
+        return xorRegisterWithRegister(cpu, 'A', 'L');
+    }
+}
+
+export const XOR_A_A = {
+    mnemonic: 'XOR A, A',
+    index: 0xaf,
+    execute(cpu) {
+        return xorRegisterWithRegister(cpu, 'A', 'A');
+    }
+}
+
+export const XOR_A_iHL = {
+    mnemonic: 'XOR A, [HL]',
+    index: 0xae,
+    execute(cpu) {
+        const address = hiLoToU16(cpu.registers.H, cpu.registers.L);
+        const oldValue = cpu.readMemory(address) & 0xff;
+        xorRegisterWithValue(cpu, 'A', oldValue);
+        return 2;
+    }
+}
+
+// #endregion
+
+// #region OR A, r8
+
+function orRegisterWithValue(cpu, registerTo, value) {
+    const to = cpu.registers[registerTo] & 0xff;
+    const comp = value | to;
+
+    cpu.registers[registerTo] = comp & 0xff;
+    cpu.registers.F = 0x00;
+
+    if (comp === 0)
+        cpu.registers.F |= Flags.Zero;
+}
+
+function orRegisterWithRegister(cpu, registerTo, registerFrom) {
+    const from = cpu.registers[registerFrom] & 0xff;
+    orRegisterWithValue(cpu, registerTo, from);
+    return 1;
+}
+
+export const OR_A_B = {
+    mnemonic: 'OR A, B',
+    index: 0xb0,
+    execute(cpu) {
+        return orRegisterWithRegister(cpu, 'A', 'B');
+    }
+}
+
+export const OR_A_C = {
+    mnemonic: 'OR A, C',
+    index: 0xb1,
+    execute(cpu) {
+        return orRegisterWithRegister(cpu, 'A', 'C');
+    }
+}
+
+export const OR_A_D = {
+    mnemonic: 'OR A, D',
+    index: 0xb2,
+    execute(cpu) {
+        return orRegisterWithRegister(cpu, 'A', 'D');
+    }
+}
+
+export const OR_A_E = {
+    mnemonic: 'OR A, E',
+    index: 0xb3,
+    execute(cpu) {
+        return orRegisterWithRegister(cpu, 'A', 'E');
+    }
+}
+
+export const OR_A_H = {
+    mnemonic: 'OR A, H',
+    index: 0xb4,
+    execute(cpu) {
+        return orRegisterWithRegister(cpu, 'A', 'H');
+    }
+}
+
+export const OR_A_L = {
+    mnemonic: 'OR A, L',
+    index: 0xb5,
+    execute(cpu) {
+        return orRegisterWithRegister(cpu, 'A', 'L');
+    }
+}
+
+export const OR_A_iHL = {
+    mnemonic: 'OR A, [HL]',
+    index: 0xb6,
+    execute(cpu) {
+        const address = hiLoToU16(cpu.registers.H, cpu.registers.L);
+        const oldValue = cpu.readMemory(address) & 0xff;
+        orRegisterWithValue(cpu, 'A', oldValue);
+        return 2;
+    }
+}
+
+export const OR_A_A = {
+    mnemonic: 'OR A, A',
+    index: 0xb7,
+    execute(cpu) {
+        return orRegisterWithRegister(cpu, 'A', 'A');
+    }
+}
+ 
+// #endregion
+
+// #region CP A, r8
+
+function compareRegisterWithValue(cpu, registerTo, value) {
+
+    const to = cpu.registers[registerTo] & 0xff;
+    const sub = to - value;
+
+    cpu.registers.F = 0x00;
+    cpu.registers.F |= sub === 0 ? Flags.Zero : 0x00;
+    cpu.registers.F |= Flags.Substraction;
+    cpu.registers.F |= value > to ? Flags.Carry : 0x00;
+    cpu.registers.F |= (to & 0x0f) < (value & 0x0f) ? Flags.HalfCarry : 0x00;
+}
+
+function compareRegisterWithRegister(cpu, registerTo, registerFrom) {
+    const from = cpu.registers[registerFrom] & 0xff;
+    compareRegisterWithValue(cpu, registerTo, from);
+    return 1;
+}
+
+
+export const CP_A_B = {
+    mnemonic: 'CP A, B',
+    index: 0xb8,
+    execute(cpu) {
+        return compareRegisterWithRegister(cpu, 'A', 'B');
+    }
+}
+
+export const CP_A_C = {
+    mnemonic: 'CP A, C',
+    index: 0xb9,
+    execute(cpu) {
+        return compareRegisterWithRegister(cpu, 'A', 'C');
+    }
+}
+
+export const CP_A_D = {
+    mnemonic: 'CP A, D',
+    index: 0xba,
+    execute(cpu) {
+        return compareRegisterWithRegister(cpu, 'A', 'D');
+    }
+}
+
+export const CP_A_E = {
+    mnemonic: 'CP A, E',
+    index: 0xbb,
+    execute(cpu) {
+        return compareRegisterWithRegister(cpu, 'A', 'E');
+    }
+}
+
+export const CP_A_H = {
+    mnemonic: 'CP A, H',
+    index: 0xbc,
+    execute(cpu) {
+        return compareRegisterWithRegister(cpu, 'A', 'H');
+    }
+}
+
+export const CP_A_L = {
+    mnemonic: 'CP A, L',
+    index: 0xbd,
+    execute(cpu) {
+        return compareRegisterWithRegister(cpu, 'A', 'L');
+    }
+}
+
+export const CP_A_iHL = {
+    mnemonic: 'CP A, [HL]',
+    index: 0xbe,
+    execute(cpu) {
+        const address = hiLoToU16(cpu.registers.H, cpu.registers.L);
+        const oldValue = cpu.readMemory(address) & 0xff;
+        compareRegisterWithValue(cpu, 'A', oldValue);
+        return 2;
+    }
+}
+
+export const CP_A_A = {
+    mnemonic: 'CP A, A',
+    index: 0xbf,
+    execute(cpu) {
+        return compareRegisterWithRegister(cpu, 'A', 'A');
+    }
+}
+
+// #endregion
+
